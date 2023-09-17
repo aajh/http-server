@@ -3,10 +3,14 @@
 #include <string.h>
 #include <stdint.h>
 #include <string>
+#include <optional>
+#include <utility>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <tl/expected.hpp>
 
 #ifndef defer
 struct defer_dummy {};
@@ -15,7 +19,7 @@ template <class F> deferrer<F> operator*(defer_dummy, F f) { return {f}; }
 #define DEFER_(LINE) zz_defer##LINE
 #define DEFER(LINE) DEFER_(LINE)
 #define defer auto DEFER(__LINE__) = defer_dummy{} *[&]()
-#endif // defer
+#endif
 
 
 const char PORT[] = "3000";
@@ -45,11 +49,62 @@ const size_t NUMBER_STRING_LENGTH = ceil(log10(UINT64_MAX));
 const char HTTP_HEADER_END[] = "\r\n\r\n";
 const auto REMAINING_HTTP_HEADER_LENGTH = sizeof(HTTP_CONTENT_LENGTH_HEADER) - 1 + NUMBER_STRING_LENGTH + sizeof(HTTP_HEADER_END) - 1;
 
-int main() {
-    int status;
+struct Connection {
+    int fd;
 
-    int socket_fd = -1;
-    {
+    Connection(int connection_fd) : fd(connection_fd) {}
+    Connection(const Connection&) = delete;
+    Connection(Connection&& o) : fd(o.fd) {
+        o.fd = -1;
+    };
+    ~Connection() {
+        if (fd != -1) {
+            close(fd);
+        }
+    }
+
+    tl::expected<size_t, const char*> send(void *data, size_t length) {
+        ssize_t bytes_sent = ::send(fd, data, length, 0);
+        if (bytes_sent == -1) {
+            return tl::unexpected(strerror(errno));
+        }
+
+        return (size_t)bytes_sent;
+    }
+};
+
+struct Socket {
+    int fd;
+
+    Socket(int socket_fd) : fd(socket_fd) {}
+    Socket(const Socket&) = delete;
+    Socket(Socket&& o) : fd(o.fd) {
+        o.fd = -1;
+    };
+    ~Socket() {
+        if (fd != -1) {
+            close(fd);
+        }
+    }
+
+    const char* listen(const int backlog) {
+        return ::listen(fd, backlog) ? strerror(errno) : nullptr;
+    }
+
+    tl::expected<Connection, const char*> accept() {
+        sockaddr_storage their_address;
+        socklen_t address_size = sizeof(their_address);
+        int connection_fd = ::accept(fd, (sockaddr*)&their_address, &address_size);
+        if (connection_fd == -1) {
+            return tl::unexpected(strerror(errno));
+        }
+
+        return Connection(connection_fd);
+    }
+
+    static tl::expected<Socket, const char*> bind(const char* port) {
+        int status = -1, socket_fd = -1;
+
         addrinfo hints;
         memset(&hints, 0, sizeof(hints));
         hints.ai_family = AF_UNSPEC;
@@ -57,39 +112,53 @@ int main() {
         hints.ai_flags = AI_PASSIVE;
 
         addrinfo* server_info;
-        status = getaddrinfo(nullptr, PORT, &hints, &server_info);
+        status = getaddrinfo(nullptr, port, &hints, &server_info);
         if (status) {
-            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-            return -1;
+            return tl::unexpected(gai_strerror(status));
         }
         defer { freeaddrinfo(server_info); };
 
         for (addrinfo* a = server_info; a != nullptr; a = a->ai_next) {
             socket_fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
             if (socket_fd == -1) {
-                perror("socket");
                 continue;
             }
 
-            status = bind(socket_fd, a->ai_addr, a->ai_addrlen);
+            status = ::bind(socket_fd, a->ai_addr, a->ai_addrlen);
             if (status) {
                 close(socket_fd);
-                perror("bind");
+                socket_fd = -1;
                 continue;
             }
 
             break;
         }
-    }
-    if (socket_fd == -1) {
-        fprintf(stderr, "failed to bind\n");
-        return -1;
-    }
-    defer { close(socket_fd); };
 
-    status = listen(socket_fd, LISTEN_BACKLOG);
-    if (status) {
-        perror("listen");
+        if (socket_fd == -1) {
+            return tl::unexpected(server_info ? strerror(errno) : "getaddrinfo did not return values");
+        }
+
+        return Socket(socket_fd);
+    }
+
+    static tl::expected<Socket, const char*> bind_and_listen(const char* port, const int backlog) {
+        auto socket = bind(port);
+        if (!socket) {
+            return socket;
+        }
+
+        if (auto error = socket->listen(backlog)) {
+            return tl::unexpected(error);
+        }
+
+        return socket;
+    }
+};
+
+int main() {
+    auto socket = Socket::bind_and_listen(PORT, LISTEN_BACKLOG);
+    if (!socket) {
+        fprintf(stderr, "Failed to bind and listen to a socket: %s\n", socket.error());
         return -1;
     }
 
@@ -111,24 +180,22 @@ int main() {
 
     response.append(HTML_DOCUMENT);
 
+
     while (1) {
-        sockaddr_storage their_address;
-        socklen_t address_size = sizeof(their_address);
-        int connection_fd = accept(socket_fd, (sockaddr*)&their_address, &address_size);
-        if (connection_fd == -1) {
-            perror("accept");
-            continue;
-        }
-        defer { close(connection_fd); };
-
-        ssize_t bytes_sent = send(connection_fd, response.data(), response.size(), 0);
-        if (bytes_sent == -1) {
-            perror("send");
+        auto connection = socket->accept();
+        if (!connection) {
+            fprintf(stderr, "accept: %s\n", connection.error());
             continue;
         }
 
-        if ((size_t)bytes_sent < response.size()) {
-            fprintf(stderr, "Sent only %ld/%ld bytes\n", bytes_sent, response.size());
+        auto bytes_sent = connection->send(response.data(), response.size());
+        if (!bytes_sent) {
+            fprintf(stderr, "send: %s\n", bytes_sent.error());
+            continue;
+        }
+
+        if (*bytes_sent < response.size()) {
+            fprintf(stderr, "Sent only %ld/%ld bytes\n", *bytes_sent, response.size());
             continue;
             // TODO: Send rest of the response in this case
         }

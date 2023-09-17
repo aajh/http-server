@@ -36,7 +36,7 @@ const auto REMAINING_HTTP_HEADER_LENGTH = sizeof(HTTP_CONTENT_LENGTH_HEADER) - 1
 int main() {
     auto socket = Socket::bind_and_listen(PORT, LISTEN_BACKLOG);
     if (!socket) {
-        fprintf(stderr, "Failed to bind and listen to a socket: %s\n", socket.error());
+        fprintf(stderr, "Failed to bind and listen to port %s: %s\n", PORT, socket.error());
         return -1;
     }
 
@@ -59,23 +59,16 @@ int main() {
     response.append(HTML_DOCUMENT);
 
 
-    while (1) {
+    while (true) {
         auto connection = socket->accept();
         if (!connection) {
             fprintf(stderr, "accept: %s\n", connection.error());
             continue;
         }
 
-        auto bytes_sent = connection->send(response.data(), response.size());
-        if (!bytes_sent) {
-            fprintf(stderr, "send: %s\n", bytes_sent.error());
+        if (auto error = connection->send(response.data(), response.size())) {
+            fprintf(stderr, "send: %s\n", error);
             continue;
-        }
-
-        if (*bytes_sent < response.size()) {
-            fprintf(stderr, "Sent only %ld/%ld bytes\n", *bytes_sent, response.size());
-            continue;
-            // TODO: Send rest of the response in this case
         }
     }
 

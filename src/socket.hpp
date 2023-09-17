@@ -13,7 +13,8 @@ struct Connection {
     };
     ~Connection();
 
-    tl::expected<size_t, const char*> send(void *data, size_t length);
+    tl::expected<size_t, const char*> send_raw(const char* data, size_t length);
+    const char* send(const char* data, size_t length);
 };
 
 struct Socket {

@@ -50,13 +50,28 @@ tl::expected<Socket, const char*> Socket::bind(const char* port) {
     return Socket(socket_fd);
 }
 
-tl::expected<size_t, const char*> Connection::send(void *data, size_t length) {
+tl::expected<size_t, const char*> Connection::send_raw(const char* data, size_t length) {
     ssize_t bytes_sent = ::send(fd, data, length, 0);
     if (bytes_sent == -1) {
         return tl::unexpected(strerror(errno));
     }
 
     return (size_t)bytes_sent;
+}
+
+const char* Connection::send(const char* data, size_t length) {
+    size_t total_bytes_sent = 0;
+
+    while (total_bytes_sent < length) {
+        auto bytes_sent = send_raw(data + total_bytes_sent, length - total_bytes_sent);
+        if (!bytes_sent) {
+            return bytes_sent.error();
+        }
+
+        total_bytes_sent += *bytes_sent;
+    }
+
+    return nullptr;
 }
 
 

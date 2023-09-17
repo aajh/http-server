@@ -47,32 +47,45 @@ const auto REMAINING_HTTP_HEADER_LENGTH = sizeof(HTTP_CONTENT_LENGTH_HEADER) - 1
 
 int main() {
     int status;
-    addrinfo hints, *server_info;
 
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
+    int socket_fd = -1;
+    {
+        addrinfo hints;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_flags = AI_PASSIVE;
 
-    status = getaddrinfo(nullptr, PORT, &hints, &server_info);
-    if (status) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-        return -1;
+        addrinfo* server_info;
+        status = getaddrinfo(nullptr, PORT, &hints, &server_info);
+        if (status) {
+            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+            return -1;
+        }
+        defer { freeaddrinfo(server_info); };
+
+        for (addrinfo* a = server_info; a != nullptr; a = a->ai_next) {
+            socket_fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+            if (socket_fd == -1) {
+                perror("socket");
+                continue;
+            }
+
+            status = bind(socket_fd, a->ai_addr, a->ai_addrlen);
+            if (status) {
+                close(socket_fd);
+                perror("bind");
+                continue;
+            }
+
+            break;
+        }
     }
-    defer { freeaddrinfo(server_info); };
-
-    int socket_fd = socket(server_info->ai_family, server_info->ai_socktype, server_info->ai_protocol);
     if (socket_fd == -1) {
-        perror("socket");
+        fprintf(stderr, "failed to bind\n");
         return -1;
     }
     defer { close(socket_fd); };
-
-    status = bind(socket_fd, server_info->ai_addr, server_info->ai_addrlen);
-    if (status) {
-        perror("bind");
-        return -1;
-    }
 
     status = listen(socket_fd, LISTEN_BACKLOG);
     if (status) {

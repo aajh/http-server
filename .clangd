@@ -1,0 +1,2 @@
+CompileFlags: 
+    Add: [-Wall, -Wextra, -Wpedantic, -I/usr/local/include, -ferror-limit=0]

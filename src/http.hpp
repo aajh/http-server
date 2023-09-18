@@ -21,7 +21,7 @@ struct HttpResponseHeader {
 
     void set_content_length(size_t length);
 
-    std::string build_header() const;
+    std::string build() const;
 };
 
 #define LIST_OF_HTTP_METHODS(DO)\

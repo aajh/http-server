@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 #include <string>
+#include <vector>
 #include <tl/expected.hpp>
 
 const size_t IP_ADDRESS_STRING_LENGTH = 46;
@@ -22,6 +23,9 @@ struct Connection {
     const char* send(const char* data, size_t length);
     const char* send(const std::string& string) {
         return send(string.data(), string.size());
+    }
+    const char* send(const std::vector<char>& array) {
+        return send(array.data(), array.size());
     }
 
     tl::expected<size_t, const char*> receive(void* buffer, size_t length);

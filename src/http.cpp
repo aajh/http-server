@@ -80,7 +80,7 @@ void HttpResponseHeader::set_content_length(size_t length) {
     headers["Content-Length"] = fmt::format("{}", length);
 }
 
-std::string HttpResponseHeader::build_header() const {
+std::string HttpResponseHeader::build() const {
     auto res = fmt::memory_buffer();
     auto inserter = std::back_inserter(res);
 

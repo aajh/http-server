@@ -40,7 +40,6 @@ enum HttpMethod {
     LIST_OF_HTTP_METHODS(METHOD_ENUM)
 };
 
-extern const std::unordered_map<HttpMethod, std::string> METHOD_STRING_MAP;
 extern const std::string INVALID_METHOD_STRING;
 const std::string& to_string(HttpMethod method);
 

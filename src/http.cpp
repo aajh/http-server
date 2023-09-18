@@ -99,7 +99,7 @@ std::string HttpResponseHeader::build_header() const {
 
 
 #define METHOD_STRING(method) { method, #method },
-const std::unordered_map<HttpMethod, std::string> METHOD_STRING_MAP = {
+static const std::unordered_map<HttpMethod, std::string> METHOD_STRING_MAP = {
     LIST_OF_HTTP_METHODS(METHOD_STRING)
 };
 

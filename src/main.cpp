@@ -35,7 +35,13 @@ int main(int argc, char** argv) {
     h["Connection"] = "close";
     h["Content-Type"] = "text/html";
     h.set_content_length(sizeof(HTML_DOCUMENT) - 1);
-    const auto header = h.build_header();
+    auto root_response = h.build_header();
+    root_response.append(HTML_DOCUMENT);
+
+    HttpResponseHeader not_found_h;
+    not_found_h.status = 404;
+    not_found_h["Connection"] = "close";
+    const auto not_found_response = not_found_h.build_header();
 
     while (true) {
         auto connection = socket->accept();
@@ -67,14 +73,16 @@ int main(int argc, char** argv) {
         }
 
 
-        if (auto error = connection->send(header)) {
-            fprintf(stderr, "send: %s\n", error);
-            continue;
-        }
-
-        if (auto error = connection->send(HTML_DOCUMENT, sizeof(HTML_DOCUMENT) - 1)) {
-            fprintf(stderr, "send: %s\n", error);
-            continue;
+        if (request->uri == "/") {
+            if (auto error = connection->send(root_response)) {
+                fprintf(stderr, "send: %s\n", error);
+                continue;
+            }
+        } else {
+            if (auto error = connection->send(not_found_response)) {
+                fprintf(stderr, "send: %s\n", error);
+                continue;
+            }
         }
     }
 

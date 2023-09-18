@@ -106,11 +106,6 @@ int main(int argc, char** argv) {
         for (const auto& h : request->headers) {
             printf("%s: %s\n", h.first.data(), h.second.data());
         }
-        if (request->body.size()) {
-            printf("The request has body with length of %lu\n", request->body.size());
-        } else {
-            printf("The request has no body\n");
-        }
 
 
         if (request->uri == "/" || request->uri == "/index.html") {

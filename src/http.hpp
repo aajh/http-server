@@ -47,7 +47,6 @@ struct HttpRequest {
     HttpMethod method;
     std::string uri;
     std::unordered_map<std::string, std::string> headers;
-    std::vector<char> body;
 
     static tl::expected<HttpRequest, const char*> receive(Connection&);
 };

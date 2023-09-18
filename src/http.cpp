@@ -236,9 +236,5 @@ tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connecti
         request.headers[std::string(*header_name)] = header_value;
     }
 
-    if (parser.read_newline() && !parser.done()) {
-        parser.read_body_into(request.body);
-    }
-
     return request;
 }

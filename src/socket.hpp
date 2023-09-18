@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.hpp"
+#include <string>
 #include <tl/expected.hpp>
 
 struct Connection {
@@ -15,6 +16,9 @@ struct Connection {
 
     tl::expected<size_t, const char*> send_raw(const char* data, size_t length);
     const char* send(const char* data, size_t length);
+    const char* send(const std::string& string) {
+        return send(string.data(), string.size());
+    }
 };
 
 struct Socket {

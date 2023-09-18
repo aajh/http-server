@@ -1,12 +1,10 @@
-#include <cmath>
-#include <limits>
 #include <stdio.h>
-#include <string>
 
 #include "common.hpp"
 #include "socket.hpp"
+#include "http.hpp"
 
-const char PORT[] = "3000";
+const char DEFAULT_PORT[] = "3000";
 const int LISTEN_BACKLOG = 10;
 
 const char HTML_DOCUMENT[] =
@@ -22,42 +20,22 @@ const char HTML_DOCUMENT[] =
 "</html>"
 ;
 
-const char HTTP_RESPONSE_HEADER[] =
-"HTTP/1.1 200 OK\r\n"
-"Connection: close\r\n"
-"Content-Type: text/html\r\n"
-;
+int main(int argc, char** argv) {
+    auto port = argc > 1 ? argv[1] : DEFAULT_PORT;
 
-const char HTTP_CONTENT_LENGTH_HEADER[] = "Content-Length: ";
-const size_t NUMBER_STRING_LENGTH = std::ceil(std::log10(std::numeric_limits<size_t>::max()));
-const char HTTP_HEADER_END[] = "\r\n\r\n";
-const auto REMAINING_HTTP_HEADER_LENGTH = sizeof(HTTP_CONTENT_LENGTH_HEADER) - 1 + NUMBER_STRING_LENGTH + sizeof(HTTP_HEADER_END) - 1;
-
-int main() {
-    auto socket = Socket::bind_and_listen(PORT, LISTEN_BACKLOG);
+    auto socket = Socket::bind_and_listen(port, LISTEN_BACKLOG);
     if (!socket) {
-        fprintf(stderr, "Failed to bind and listen to port %s: %s\n", PORT, socket.error());
+        fprintf(stderr, "Failed to bind and listen to port %s: %s\n", port, socket.error());
         return -1;
     }
 
-    printf("Listening on port %s...\n", PORT);
+    printf("Listening on port %s...\n", port);
 
-
-    const size_t response_header_max_length = sizeof(HTTP_RESPONSE_HEADER) - 1 + REMAINING_HTTP_HEADER_LENGTH + 1;
-    std::string response(response_header_max_length + sizeof(HTML_DOCUMENT) - 1, '\0');
-
-    auto response_header_length = snprintf(response.data(), response_header_max_length, "%s%s%ld%s", HTTP_RESPONSE_HEADER, HTTP_CONTENT_LENGTH_HEADER, sizeof(HTML_DOCUMENT) - 1, HTTP_HEADER_END);
-    if (response_header_length < 0) {
-        fprintf(stderr, "Error while constructing the HTTP header with snprintf\n");
-        return -1;
-    }
-    if ((unsigned)response_header_length > response_header_max_length - 1) {
-        response_header_length = response_header_max_length - 1;
-    }
-    response.resize(response_header_length);
-
-    response.append(HTML_DOCUMENT);
-
+    HttpResponseHeader h;
+    h["Connection"] = "close";
+    h["Content-Type"] = "text/html";
+    h.set_content_length(sizeof(HTML_DOCUMENT) - 1);
+    const auto header = h.build_header();
 
     while (true) {
         auto connection = socket->accept();
@@ -66,7 +44,12 @@ int main() {
             continue;
         }
 
-        if (auto error = connection->send(response.data(), response.size())) {
+        if (auto error = connection->send(header)) {
+            fprintf(stderr, "send: %s\n", error);
+            continue;
+        }
+
+        if (auto error = connection->send(HTML_DOCUMENT, sizeof(HTML_DOCUMENT) - 1)) {
             fprintf(stderr, "send: %s\n", error);
             continue;
         }

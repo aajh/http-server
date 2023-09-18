@@ -44,7 +44,28 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        printf("Connection from address %s\n", connection->ip);
+        printf("\nConnection from address %s\n", connection->ip);
+
+        auto request = HttpRequest::receive(*connection);
+        if (!request) {
+            fprintf(stderr, "Error while receiving the request: %s\n", request.error());
+            continue;
+        }
+
+
+        printf("Method: %s\n", to_string(request->method).data());
+        printf("URI: %s\n",request->uri.data());
+
+        printf("Headers:\n");
+        for (const auto& h : request->headers) {
+            printf("%s: %s\n", h.first.data(), h.second.data());
+        }
+        if (request->body.size()) {
+            printf("The request has body with length of %lu\n", request->body.size());
+        } else {
+            printf("The request has no body\n");
+        }
+
 
         if (auto error = connection->send(header)) {
             fprintf(stderr, "send: %s\n", error);

@@ -23,6 +23,8 @@ struct Connection {
     const char* send(const std::string& string) {
         return send(string.data(), string.size());
     }
+
+    tl::expected<size_t, const char*> receive(void* buffer, size_t length);
 };
 
 struct Socket {

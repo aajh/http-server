@@ -75,6 +75,15 @@ const char* Connection::send(const char* data, size_t length) {
     return nullptr;
 }
 
+tl::expected<size_t, const char*> Connection::receive(void* buffer, size_t length) {
+    ssize_t received_bytes = ::recv(fd, buffer, length, 0);
+    if (received_bytes == -1) {
+        return tl::unexpected(strerror(errno));
+    }
+
+    return (size_t)received_bytes;
+}
+
 
 Socket::~Socket() {
     if (fd != -1) {

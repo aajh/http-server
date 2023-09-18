@@ -44,6 +44,8 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        printf("Connection from address %s\n", connection->ip);
+
         if (auto error = connection->send(header)) {
             fprintf(stderr, "send: %s\n", error);
             continue;

@@ -4,12 +4,16 @@
 #include <string>
 #include <tl/expected.hpp>
 
+const size_t IP_ADDRESS_STRING_LENGTH = 46;
+
 struct Connection {
     int fd;
+    char ip[IP_ADDRESS_STRING_LENGTH] = { '\0' };
 
-    Connection(int connection_fd) : fd(connection_fd) {}
+    explicit Connection(int connection_fd) : fd(connection_fd) {}
     Connection(const Connection&) = delete;
     Connection(Connection&& o) : fd(o.fd) {
+        memcpy(ip, o.ip, sizeof(ip));
         o.fd = -1;
     };
     ~Connection();
@@ -24,7 +28,7 @@ struct Connection {
 struct Socket {
     int fd;
 
-    Socket(int socket_fd) : fd(socket_fd) {}
+    explicit Socket(int socket_fd) : fd(socket_fd) {}
     Socket(const Socket&) = delete;
     Socket(Socket&& o) : fd(o.fd) {
         o.fd = -1;

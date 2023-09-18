@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 
 Connection::~Connection() {
     if (fd != -1) {
@@ -93,5 +94,15 @@ tl::expected<Connection, const char*> Socket::accept() {
         return tl::unexpected(strerror(errno));
     }
 
-    return Connection(connection_fd);
+    auto connection = Connection(connection_fd);
+
+    if (their_address.ss_family == AF_INET6) {
+        const auto sa6 = reinterpret_cast<sockaddr_in6*>(&their_address);
+        inet_ntop(AF_INET6, &(sa6->sin6_addr), connection.ip, sizeof(connection.ip));
+    } else {
+        const auto sa = reinterpret_cast<sockaddr_in*>(&their_address);
+        inet_ntop(AF_INET, &(sa->sin_addr), connection.ip, sizeof(connection.ip));
+    }
+
+    return connection;
 }

@@ -8,6 +8,8 @@
 
 struct Connection;
 
+extern const std::string UNKNOWN_STATUS;
+
 struct HttpResponseHeader {
     u16 status = 200;
     std::unordered_map<std::string, std::string> headers;
@@ -21,6 +23,7 @@ struct HttpResponseHeader {
 
     void set_content_length(size_t length);
 
+    const std::string& status_to_string() const;
     std::string build() const;
 };
 

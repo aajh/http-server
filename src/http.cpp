@@ -75,17 +75,22 @@ static const std::unordered_map<u16, std::string> STATUS_REASON_PHRASES = {
     { 510, "Not Extended" },
     { 511, "Network Authentication Required" },
 };
+const std::string UNKNOWN_STATUS = "Unknown Status";
 
 void HttpResponseHeader::set_content_length(size_t length) {
     headers["Content-Length"] = fmt::format("{}", length);
+}
+
+const std::string& HttpResponseHeader::status_to_string() const {
+    auto reason_phrase_search = STATUS_REASON_PHRASES.find(status);
+    return reason_phrase_search != STATUS_REASON_PHRASES.end() ? reason_phrase_search->second : UNKNOWN_STATUS;
 }
 
 std::string HttpResponseHeader::build() const {
     auto res = fmt::memory_buffer();
     auto inserter = std::back_inserter(res);
 
-    auto reason_phrase_search = STATUS_REASON_PHRASES.find(status);
-    auto reason_phrase = reason_phrase_search != STATUS_REASON_PHRASES.end() ? reason_phrase_search->second : "UNKNOWN";
+    auto reason_phrase = status_to_string();
     fmt::format_to(inserter, "{} {} {}\r\n", HTTP_VERSION_1_1, status, reason_phrase);
 
     for (const auto& h : headers) {

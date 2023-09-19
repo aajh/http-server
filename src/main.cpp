@@ -1,15 +1,12 @@
 #include <stdio.h>
-#include <optional>
-#include <filesystem>
-#include <algorithm>
 
 #include "common.hpp"
 #include "socket.hpp"
 #include "http.hpp"
+#include "file.hpp"
 
 const char DEFAULT_PORT[] = "3000";
 const int LISTEN_BACKLOG = 10;
-const std::filesystem::path FILE_SERVE_ROOT = (std::filesystem::current_path() / "public").lexically_normal();
 
 const char DEFAULT_HTML_DOCUMENT[] =
 "<!DOCTYPE html>"
@@ -24,39 +21,6 @@ const char DEFAULT_HTML_DOCUMENT[] =
     "</body>"
 "</html>"
 ;
-const char NOT_FOUND_MESSAGE[] = "Not Found";
-
-std::optional<std::vector<char>> get_file_contents(const std::string& uri) {
-    if (uri.size() == 0 || uri[0] != '/') return {};
-
-    auto path = std::filesystem::weakly_canonical(FILE_SERVE_ROOT / uri.substr(1));
-
-    auto first_mismatch = std::mismatch(FILE_SERVE_ROOT.begin(), FILE_SERVE_ROOT.end(), path.begin()).first;
-    if (first_mismatch != FILE_SERVE_ROOT.end()) {
-        return {};
-    }
-
-    FILE *file = fopen(path.c_str(), "rb");
-    if (!file) {
-        return {};
-    }
-
-    if (fseek(file, 0, SEEK_END)) {
-        return {};
-    }
-    const size_t length = ftell(file);
-    if (fseek(file, 0, SEEK_SET)) {
-        return {};
-    }
-
-    std::vector<char> contents(length);
-    const auto read_bytes = fread(contents.data(), 1, length, file);
-    if (read_bytes != length) {
-        return {};
-    }
-
-    return contents;
-}
 
 int main(int argc, char** argv) {
     auto port = argc > 1 ? argv[1] : DEFAULT_PORT;
@@ -75,13 +39,6 @@ int main(int argc, char** argv) {
     h.set_content_length(sizeof(DEFAULT_HTML_DOCUMENT) - 1);
     auto root_response = h.build();
     root_response.append(DEFAULT_HTML_DOCUMENT);
-
-    HttpResponseHeader not_found_h;
-    not_found_h.status = 404;
-    not_found_h["Connection"] = "close";
-    not_found_h.set_content_length(sizeof(NOT_FOUND_MESSAGE) - 1);
-    auto not_found_response = not_found_h.build();
-    not_found_response.append(NOT_FOUND_MESSAGE);
 
     while (true) {
         auto connection = socket->accept();
@@ -113,11 +70,49 @@ int main(int argc, char** argv) {
                 fprintf(stderr, "send: %s\n", error);
                 continue;
             }
-        } else if (const auto file = get_file_contents(request->uri)) {
+        } else {
+            const auto file = read_file_contents(request->uri);
+
+            if (!file.has_value()) {
+                const auto& error = file.error();
+
+                HttpResponseHeader h;
+                h.status = 500;
+                h["Connection"] = "close";
+
+                switch (error.type) {
+                    case FileReadError::INVALID_URI:
+                        h.status = 400;
+                        break;
+                    case FileReadError::NOT_FOUND:
+                        h.status = 404;
+                        break;
+                    case FileReadError::IO_ERROR:
+                        h.status = 500;
+                        if (error.ec) {
+                            fprintf(stderr, "IO error: %s\n", error.ec.message().data());
+                        } else {
+                            fprintf(stderr, "Unknown IO error\n");
+                        }
+                        break;
+                }
+
+                const auto& message = h.status_to_string();
+                h.set_content_length(message.size());
+
+                auto response = h.build();
+                response.append(message);
+                if (auto error = connection->send(response)) {
+                    fprintf(stderr, "send: %s\n", error);
+                }
+
+                continue;
+            }
+
             HttpResponseHeader h;
             h["Connection"] = "close";
             h["Content-Type"] = "text/html";
-            h.set_content_length(file->size());
+            h.set_content_length(file->contents.size());
             const auto header = h.build();
 
             if (auto error = connection->send(header)) {
@@ -125,12 +120,7 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            if (auto error = connection->send(*file)) {
-                fprintf(stderr, "send: %s\n", error);
-                continue;
-            }
-        } else {
-            if (auto error = connection->send(not_found_response)) {
+            if (auto error = connection->send(file->contents)) {
                 fprintf(stderr, "send: %s\n", error);
                 continue;
             }

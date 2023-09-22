@@ -5,9 +5,10 @@
 #include <vector>
 #include <tl/expected.hpp>
 
-const size_t IP_ADDRESS_STRING_LENGTH = 46;
 
 struct Connection {
+    static constexpr size_t IP_ADDRESS_STRING_LENGTH = 46;
+
     int fd;
     char ip[IP_ADDRESS_STRING_LENGTH] = { '\0' };
 

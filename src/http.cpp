@@ -5,6 +5,7 @@
 #include <string_view>
 #include <fmt/format.h>
 #include "socket.hpp"
+#include "ring_buffer.hpp"
 
 static const char HTTP_VERSION_1_1[] = "HTTP/1.1";
 
@@ -121,23 +122,77 @@ const std::string& to_string(HttpMethod method) {
 }
 
 struct HttpRequestParser {
-    const char* p, *end;
+    static constexpr size_t MAX_TOKEN_LENGTH = 8*1024;
+    static constexpr size_t MIN_BUFFER_LENGTH = 2*MAX_TOKEN_LENGTH;
+    static constexpr size_t RECEIVE_CHUNK_SIZE = MAX_TOKEN_LENGTH;
 
-    HttpRequestParser(const char* buffer, size_t length) : p(buffer), end(p + length) {}
+    Connection& connection;
+    RingBuffer b;
+    size_t p = 0, end = 0;
+
+    HttpRequestParser(Connection& connection, RingBuffer&& buffer) : connection(connection), b(std::move(buffer)) {}
+
+    static tl::expected<HttpRequestParser, const char*> create(Connection& connection) {
+        auto buffer = RingBuffer::create(MIN_BUFFER_LENGTH);
+        if (!buffer) {
+            return tl::unexpected(buffer.error());
+        }
+
+        return HttpRequestParser(connection, std::move(*buffer));
+    }
+
+    bool ensure_data(size_t length) {
+        if (p + length <= end) return true;
+
+        if (!b.is_in_range(end - 1 + RECEIVE_CHUNK_SIZE)) {
+            return false;
+        }
+
+        auto received_bytes = connection.receive(&b[end], RECEIVE_CHUNK_SIZE);
+        if (!received_bytes) {
+            return false;
+        }
+
+        end += *received_bytes;
+        return p + length < end;
+    }
+
+    bool advance(size_t step = 1) {
+        if (ensure_data(step)) {
+            p += step;
+            return true;
+        } else {
+            p = end;
+            return false;
+        }
+    }
+
+    void normalize() {
+        bool was_done = done();
+
+        p = b.normalized_index(p);
+        end = b.normalized_index(end);
+
+        if (!was_done && end == 0) {
+            end = b.length;
+        }
+    }
 
     bool done() {
         return p == end;
     }
 
     void eat_whitespace() {
-        while (p != end) {
-            if (!isspace(*p)) return;
-            ++p;
+        while (ensure_data(1)) {
+            if (!isspace(b[p])) return;
+            advance();
         }
     }
 
     bool read_newline() {
-        if (end - p >= 2 && *p == '\r' && *(p + 1) == '\n') {
+        if (!ensure_data(2)) return false;
+
+        if (b[p] == '\r' && b[p + 1] == '\n') {
             p += 2;
             return true;
         }
@@ -146,70 +201,56 @@ struct HttpRequestParser {
     }
 
     std::string_view read_until_whitespace() {
-        const char* start = p;
+        size_t start = p;
 
-        while (p != end) {
-            if (isspace(*p)) break;
-            ++p;
+        while (ensure_data(1)) {
+            if (isspace(b[p])) break;
+            advance();
         }
 
-        return { start, (size_t)(p - start) };
+        return { &b[start], p - start };
     }
 
     std::string_view read_line() {
-        const char* start = p;
+        size_t start = p;
         bool found_line_break = false;
 
-        while (p < end - 1) {
-            if (*p == '\r' && *(p + 1) == '\n') {
+        while (ensure_data(2)) {
+            if (b[p] == '\r' && b[p + 1] == '\n') {
                 found_line_break = true;
                 break;
             }
-            ++p;
+            advance();
         }
 
-        if (found_line_break || p == end - 1) ++p;
+        size_t length = p - start;
+        if (found_line_break) p += 2;
 
-        ptrdiff_t diff = p - start - found_line_break;
-        size_t length = diff > 0 ? diff : 0;
-        return { start, length };
+        return { &b[start], length };
     }
 
     std::optional<std::string_view> read_header_name() {
-        const char* start = p;
+        size_t start = p;
 
-        while (p != end) {
-            if (*p == ':') break;
-            ++p;
+        while (ensure_data(1)) {
+            if (b[p] == ':') break;
+            advance();
         }
 
-        if (p == end) return {};
+        if (done()) return {};
 
-        return {{ start, (size_t)(p++ - start) }};
-    }
-
-    void read_body_into(std::vector<char>& array) {
-        array.insert(array.end(), p, end);
+        return {{ &b[start], p++ - start }};
     }
 };
 
+// TODO: Report requests that are too long
 tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connection) {
-    std::vector<char> buffer(64*1024);
-
-    // TODO: Receive more data, if the request wasn't read completly in one go
-    auto bytes_received = connection.receive(buffer.data(), buffer.size());
-    if (!bytes_received) {
-        return tl::unexpected(bytes_received.error());
-    }
-
-    if (*bytes_received == 0) {
-        return tl::unexpected("No data received");
-    }
-
-    //fwrite(buffer.data(), *bytes_received, 1, stdout);
-
     HttpRequest request;
-    auto parser = HttpRequestParser(buffer.data(), *bytes_received);
+    auto parser_creation = HttpRequestParser::create(connection);
+    if (!parser_creation) {
+        return tl::unexpected(parser_creation.error());
+    }
+    auto& parser = *parser_creation;
 
     auto method_string = parser.read_until_whitespace();
     auto method_search = STRING_METHOD_MAP.find(method_string);
@@ -226,17 +267,24 @@ tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connecti
     if (http_version != HTTP_VERSION_1_1) {
         return tl::unexpected("Unsupported HTTP version");
     }
+    parser.read_newline();
+    parser.normalize();
+
 
     while (!parser.done()) {
-        parser.eat_whitespace();
+        if (parser.read_newline()) break;
+
         auto header_name = parser.read_header_name();
         if (!header_name) break;
+        std::string key(*header_name);
+        parser.normalize();
 
         parser.eat_whitespace();
         auto header_value = parser.read_line();
         if (!header_value.size()) break;
 
-        request.headers[std::string(*header_name)] = header_value;
+        request.headers[std::move(key)] = header_value;
+        parser.normalize();
     }
 
     return request;

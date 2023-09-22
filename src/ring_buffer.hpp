@@ -38,5 +38,14 @@ struct RingBuffer {
         }
     }
 
+    template<typename T>
+    T normalized_index(T i) {
+        i %= length;
+        if constexpr (std::is_signed<T>::value) {
+            if (i < 0) return i + length;
+        }
+        return i;
+    }
+
     static tl::expected<RingBuffer, const char*> create(const size_t wanted_length = PAGE_SIZE);
 };

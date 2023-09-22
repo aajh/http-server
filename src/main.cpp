@@ -115,6 +115,7 @@ int main(int argc, char** argv) {
             h["Connection"] = "close";
             h["Content-Type"] = "text/html";
             h.set_content_length(file->contents.size());
+            h.set_last_modified(file->last_write);
             const auto header = h.build();
 
             if (auto error = connection->send(header)) {

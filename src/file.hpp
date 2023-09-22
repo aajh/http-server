@@ -18,6 +18,7 @@ struct FileReadError {
         IO_ERROR,
     } type;
 
-    std::error_code ec;
+    std::error_code ec = {};
+    const char* message = nullptr;
 };
 tl::expected<File, FileReadError> read_file_contents(const std::string& uri);

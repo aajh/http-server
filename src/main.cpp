@@ -89,7 +89,9 @@ int main(int argc, char** argv) {
                         break;
                     case FileReadError::IO_ERROR:
                         h.status = 500;
-                        if (error.ec) {
+                        if (error.message) {
+                            fprintf(stderr, "IO error: %s\n", error.message);
+                        } else if (error.ec) {
                             fprintf(stderr, "IO error: %s\n", error.ec.message().data());
                         } else {
                             fprintf(stderr, "Unknown IO error\n");

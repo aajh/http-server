@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <stdio.h>
+#include <string.h>
 
 static const std::filesystem::path FILE_SERVE_ROOT = (std::filesystem::current_path() / FILE_FOLDER).lexically_normal();
 
@@ -40,21 +41,25 @@ tl::expected<File, FileReadError> read_file_contents(const std::string& uri) {
 
     FILE *file = fopen(path.c_str(), "rb");
     if (!file) {
-        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec });
+        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec, strerror(errno) });
     }
 
     if (fseek(file, 0, SEEK_END)) {
-        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec });
+        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec, strerror(errno) });
     }
-    const size_t length = ftell(file);
+    const auto ftell_result = ftell(file);
+    if (ftell_result < 0) {
+        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec, strerror(errno) });
+    }
+    const size_t length = ftell_result;
     if (fseek(file, 0, SEEK_SET)) {
-        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec });
+        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec, strerror(errno) });
     }
 
     ret.contents.resize(length);
     const auto read_bytes = fread(ret.contents.data(), 1, length, file);
     if (read_bytes != length) {
-        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec });
+        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR });
     }
 
     return ret;

@@ -64,3 +64,50 @@ tl::expected<File, FileReadError> read_file_contents(const std::string& uri) {
 
     return ret;
 }
+
+
+tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_or_read(const std::string& uri) {
+    if (auto search = file_map.find(uri); search != file_map.end()) {
+        auto it = search->second;
+        it->last_accessed = Clock::now();
+
+        auto begin = file_list.begin();
+        if (it != begin) {
+            std::swap(*it, *begin);
+            file_map[begin->uri] = begin;
+            file_map[it->uri] = it;
+        }
+
+        return latest_file();
+    }
+
+    auto read_file = read_file_contents(uri);
+    if (!read_file && read_file.error().type == FileReadError::IO_ERROR) {
+        return tl::unexpected(read_file.error());
+    }
+
+    Entry new_entry;
+    new_entry.uri = uri;
+    if (read_file) {
+        new_entry.file = std::move(*read_file);
+    } else {
+        new_entry.status = read_file.error().type;
+    }
+    new_entry.last_accessed = Clock::now();
+
+    file_list.push_front(std::move(new_entry));
+    auto it = file_list.begin();
+    file_map[it->uri] = it;
+
+    return latest_file();
+}
+
+tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::latest_file() const {
+    assert(!file_list.empty());
+    auto& entry = file_list.front();
+    if (entry.status) {
+        return tl::unexpected(FileReadError{ entry.status });
+    } else {
+        return entry.file;
+    }
+}

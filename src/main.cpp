@@ -33,6 +33,8 @@ int main(int argc, char** argv) {
 
     printf("Listening on port %s...\n", port);
 
+    FileCache file_cache;
+
     HttpResponseHeader h;
     h["Connection"] = "close";
     h["Content-Type"] = "text/html";
@@ -71,16 +73,18 @@ int main(int argc, char** argv) {
                 continue;
             }
         } else {
-            const auto file = read_file_contents(request->uri);
+            const auto file_result = file_cache.get_or_read(request->uri);
 
-            if (!file.has_value()) {
-                const auto& error = file.error();
+            if (!file_result) {
+                const auto& error = file_result.error();
 
                 HttpResponseHeader h;
                 h.status = 500;
                 h["Connection"] = "close";
 
                 switch (error.type) {
+                    case FileReadError::OK:
+                        break;
                     case FileReadError::INVALID_URI:
                         h.status = 400;
                         break;
@@ -111,11 +115,13 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            const auto& file = file_result->get();
+
             HttpResponseHeader h;
             h["Connection"] = "close";
             h["Content-Type"] = "text/html";
-            h.set_content_length(file->contents.size());
-            h.set_last_modified(file->last_write);
+            h.set_content_length(file.contents.size());
+            h.set_last_modified(file.last_write);
             const auto header = h.build();
 
             if (auto error = connection->send(header)) {
@@ -123,7 +129,7 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            if (auto error = connection->send(file->contents)) {
+            if (auto error = connection->send(file.contents)) {
                 fprintf(stderr, "send: %s\n", error);
                 continue;
             }

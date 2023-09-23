@@ -243,7 +243,6 @@ struct HttpRequestParser {
     }
 };
 
-// TODO: Report requests that are too long
 tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connection) {
     HttpRequest request;
     auto parser_creation = HttpRequestParser::create(connection);

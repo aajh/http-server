@@ -1,0 +1,17 @@
+Content-Type headers based on the file
+Test Linux compatibility
+
+FileCache:
+    Use paths instead of URIs
+    Limit cache size and number of entries
+    Don't cache large files
+    Evict old data from cache
+    Listen for file updates
+
+HttpRequest:
+    Give errors for breaking request size limits
+    Decode URI
+
+General future things:
+    Asynchronous IO
+    Streaming IO

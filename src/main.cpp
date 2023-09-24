@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
 
 
         printf("Method: %s\n", to_string(request->method).data());
-        printf("URI: %s\n",request->uri.data());
+        printf("Path: %s\n",request->path.data());
 
         printf("Headers:\n");
         for (const auto& h : request->headers) {
@@ -67,13 +67,13 @@ int main(int argc, char** argv) {
         }
 
 
-        if (request->uri == "/" || request->uri == "/index.html") {
+        if (request->path == "/" || request->path == "/index.html") {
             if (auto error = connection->send(root_response)) {
                 fprintf(stderr, "send: %s\n", error);
                 continue;
             }
         } else {
-            const auto file_result = file_cache.get_or_read(request->uri);
+            const auto file_result = file_cache.get_or_read(request->path);
 
             if (!file_result) {
                 const auto& error = file_result.error();

@@ -10,7 +10,8 @@ FileCache:
 
 HttpRequest:
     Give errors for breaking request size limits
-    Decode URI
+    Parse URI completely
+    Give errors for an invalid request-target
 
 General future things:
     Asynchronous IO

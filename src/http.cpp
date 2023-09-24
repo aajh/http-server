@@ -1,6 +1,7 @@
 #include "http.hpp"
 
 #include <cstddef>
+#include <limits>
 #include <map>
 #include <string_view>
 #include <fmt/format.h>
@@ -241,6 +242,43 @@ struct HttpRequestParser {
 
         return {{ &b[start], p++ - start }};
     }
+
+    std::string read_request_target_returning_path() {
+        auto request_target = read_until_whitespace();
+
+        auto it = request_target.begin();
+        while (it != request_target.end() && *it != '/') {
+            ++it;
+        }
+        if (it == request_target.end()) return "/";
+
+        std::string path = "/";
+
+        while (++it != request_target.end()) {
+            if (*it == '?') break;
+            if (*it != '%') {
+                path.push_back(*it);
+            } else {
+                if (++it == request_target.end()) return "/"; // Invalid URI
+                if (*it == '%') {
+                    path.push_back('%');
+                    continue;
+                }
+
+                char hex[3] = { '\0' };
+                hex[0] = *it;
+
+                if (++it == request_target.end()) return "/"; // Invalid URI
+                hex[1] = *it;
+
+                auto value = strtoul(hex, nullptr, 16);
+                assert(value <= std::numeric_limits<char>::max());
+                path.push_back(value);
+            }
+        }
+
+        return path;
+    }
 };
 
 tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connection) {
@@ -259,7 +297,7 @@ tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connecti
     request.method = method_search->second;
 
     parser.eat_whitespace();
-    request.uri = parser.read_until_whitespace();
+    request.path = parser.read_request_target_returning_path();
 
     parser.eat_whitespace();
     auto http_version = parser.read_until_whitespace();

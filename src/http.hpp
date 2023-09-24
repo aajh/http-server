@@ -63,7 +63,7 @@ const std::string& to_string(HttpMethod method);
 
 struct HttpRequest {
     HttpMethod method;
-    std::string uri;
+    std::string path;
     std::unordered_map<std::string, std::string> headers;
 
     static tl::expected<HttpRequest, const char*> receive(Connection&);

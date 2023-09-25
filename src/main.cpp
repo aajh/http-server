@@ -54,7 +54,39 @@ int main(int argc, char** argv) {
 
         auto request = HttpRequest::receive(*connection);
         if (!request) {
-            fmt::print(stderr, "Error while receiving the request: {}\n", request.error());
+            fmt::print(stderr, "Error while receiving the request: ");
+
+            HttpResponseHeader h;
+            h["Connection"] = "close";
+
+            switch (request.error()) {
+                case HttpRequest::SERVER_ERROR:
+                    fmt::print(stderr, "server error\n");
+                    h.status = 500;
+                    break;
+                case HttpRequest::UNKNOWN_METHOD:
+                    fmt::print(stderr, "unknown method\n");
+                    h.status = 501;
+                    break;
+                case HttpRequest::UNSUPPORTED_HTTP_VERSION:
+                    fmt::print(stderr, "unsupported HTTP version\n");
+                    h.status = 505;
+                    break;
+                case HttpRequest::BAD_REQUEST:
+                    fmt::print(stderr, "bad request\n");
+                    h.status = 400;
+                    break;
+            }
+
+            const auto& message = h.status_to_string();
+            h.set_content_length(message.size());
+
+            auto response = h.build();
+            response.append(message);
+            if (auto error = connection->send(response)) {
+                fmt::print(stderr, "send: {}\n", error);
+            }
+
             continue;
         }
 

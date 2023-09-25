@@ -305,18 +305,19 @@ struct HttpRequestParser {
     }
 };
 
-tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connection) {
+tl::expected<HttpRequest, HttpRequest::ReceiveError> HttpRequest::receive(Connection& connection) {
     HttpRequest request;
     auto parser_creation = HttpRequestParser::create(connection);
     if (!parser_creation) {
-        return tl::unexpected(parser_creation.error());
+        return tl::unexpected(SERVER_ERROR);
     }
     auto& parser = *parser_creation;
 
+    parser.read_newline();
     auto method_string = parser.read_until_whitespace();
     auto method_search = STRING_METHOD_MAP.find(method_string);
     if (method_search == STRING_METHOD_MAP.end()) {
-        return tl::unexpected("Unknown method");
+        return tl::unexpected(UNKNOWN_METHOD);
     }
     request.method = method_search->second;
 
@@ -326,17 +327,17 @@ tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connecti
     parser.eat_whitespace();
     auto http_version = parser.read_until_whitespace();
     if (http_version != HTTP_VERSION_1_1) {
-        return tl::unexpected("Unsupported HTTP version");
+        return tl::unexpected(UNSUPPORTED_HTTP_VERSION);
     }
     if (!parser.read_newline()) {
-        return tl::unexpected("Bad request");
+        return tl::unexpected(BAD_REQUEST);
     }
     parser.normalize();
 
     while (!parser.read_newline() && !parser.empty()) {
         auto header_name_result = parser.read_header_name();
         if (!header_name_result) {
-            return tl::unexpected("Bad request");
+            return tl::unexpected(BAD_REQUEST);
         }
         std::string header_name(*header_name_result);
         parser.normalize();
@@ -344,7 +345,7 @@ tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connecti
         parser.eat_whitespace();
         auto field = parser.read_header_field();
         if (!field.size()) {
-            return tl::unexpected("Bad request");
+            return tl::unexpected(BAD_REQUEST);
         }
         request.headers[std::move(header_name)] = field;
         parser.normalize();

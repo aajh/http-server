@@ -67,5 +67,11 @@ struct HttpRequest {
     std::string path;
     std::unordered_map<std::string, std::string> headers;
 
-    static tl::expected<HttpRequest, const char*> receive(Connection&);
+    enum ReceiveError {
+        SERVER_ERROR,
+        UNKNOWN_METHOD,
+        UNSUPPORTED_HTTP_VERSION,
+        BAD_REQUEST,
+    };
+    static tl::expected<HttpRequest, ReceiveError> receive(Connection&);
 };

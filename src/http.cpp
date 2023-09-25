@@ -4,6 +4,7 @@
 #include <limits>
 #include <map>
 #include <string_view>
+#include <optional>
 #include <fmt/format.h>
 #include "socket.hpp"
 #include "ring_buffer.hpp"

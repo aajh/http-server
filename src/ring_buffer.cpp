@@ -1,6 +1,9 @@
 #include "ring_buffer.hpp"
 
+#include <cstdio>
+#include <cstring>
 #include <sys/mman.h>
+#include <sys/errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.hpp"
+#include <cstring>
 #include <string>
 #include <vector>
 #include <tl/expected.hpp>

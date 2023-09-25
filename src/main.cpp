@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
 
             HttpResponseHeader h;
             h["Connection"] = "close";
-            h["Content-Type"] = "text/html";
+            h["Content-Type"] = file.mime_type;
             h.set_content_length(file.contents.size());
             h.set_last_modified(file.last_write);
             const auto header = h.build();

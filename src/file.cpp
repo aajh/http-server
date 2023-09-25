@@ -27,6 +27,30 @@ tl::expected<std::filesystem::path, FileReadError> get_filesystem_path_from_uri_
     return path;
 }
 
+static const std::unordered_map<std::string_view, const char*> MIME_TYPES = {
+    { "txt", "text/plain" },
+    { "html", "text/html" },
+    { "htm", "text/html" },
+    { "js", "text/javacsript" },
+    { "css", "text/css" },
+    { "json", "application/json" },
+    { "jpeg", "image/jpeg" },
+    { "jpg", "image/jpeg" },
+    { "png", "image/png" },
+    { "svg", "image/svg+xml" },
+    { "webp", "image/webp", },
+    { "avif", "image/avif" },
+};
+
+static std::string_view get_mime_type(const std::filesystem::path& path) {
+    std::string_view extension = path.extension().native();
+    if (extension.size() == 0) return DEFAULT_MIME_TYPE;
+    if (extension[0] == '.') extension = extension.substr(1);
+
+    auto search = MIME_TYPES.find(extension);
+    return search != MIME_TYPES.end() ? search->second : DEFAULT_MIME_TYPE;
+}
+
 tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path& path) {
     std::error_code ec;
 
@@ -39,6 +63,8 @@ tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path
     }
 
     File ret;
+
+    ret.mime_type = get_mime_type(path);
 
     ret.last_write = std::filesystem::last_write_time(path, ec);
     if (ec) {

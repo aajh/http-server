@@ -12,10 +12,12 @@
 #include <tl/expected.hpp>
 
 const char FILE_FOLDER[] = "public";
+const char DEFAULT_MIME_TYPE[] = "application/octet-stream";
 
 struct File {
     std::vector<char> contents;
     std::filesystem::file_time_type last_write;
+    std::string mime_type = DEFAULT_MIME_TYPE;
 };
 
 struct FileReadError {

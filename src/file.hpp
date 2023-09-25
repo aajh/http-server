@@ -3,7 +3,7 @@
 #include "common.hpp"
 #include <filesystem>
 #include <vector>
-#include <unordered_map>
+#include <map>
 #include <list>
 #include <chrono>
 #include <string>
@@ -29,14 +29,16 @@ struct FileReadError {
     std::error_code ec = {};
     const char* message = nullptr;
 };
-tl::expected<File, FileReadError> read_file_contents(const std::string& uri);
+
+tl::expected<std::filesystem::path, FileReadError> get_filesystem_path_from_uri_path(const std::string& uri_path);
+tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path& path);
 
 
 struct FileCache {
     using Clock = std::chrono::steady_clock;
     using Time = std::chrono::time_point<Clock>;
     struct Entry {
-        std::string uri;
+        std::filesystem::path path;
         FileReadError::Type status = FileReadError::OK;
         File file;
         Time last_accessed;
@@ -44,8 +46,8 @@ struct FileCache {
     using List = std::list<Entry>;
 
     List file_list;
-    std::unordered_map<std::string_view, List::iterator> file_map;
+    std::map<std::reference_wrapper<const std::filesystem::path>, List::iterator, std::less<const std::filesystem::path>> file_map;
 
-    tl::expected<std::reference_wrapper<const File>, FileReadError> get_or_read(const std::string& uri);
+    tl::expected<std::reference_wrapper<const File>, FileReadError> get_or_read(const std::string& uri_path);
     tl::expected<std::reference_wrapper<const File>, FileReadError> latest_file() const;
 };

@@ -7,14 +7,14 @@
 
 static const std::filesystem::path FILE_SERVE_ROOT = (std::filesystem::current_path() / FILE_FOLDER).lexically_normal();
 
-tl::expected<File, FileReadError> read_file_contents(const std::string& uri) {
+tl::expected<std::filesystem::path, FileReadError> get_filesystem_path_from_uri_path(const std::string& uri_path) {
     std::error_code ec;
 
-    if (uri.size() == 0 || uri[0] != '/') {
+    if (uri_path.size() == 0 || uri_path[0] != '/') {
         return tl::unexpected(FileReadError{ FileReadError::INVALID_URI, ec });
     }
 
-    auto path = std::filesystem::weakly_canonical(FILE_SERVE_ROOT / uri.substr(1), ec);
+    auto path = std::filesystem::weakly_canonical(FILE_SERVE_ROOT / uri_path.substr(1), ec);
     if (ec) {
         return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec });
     }
@@ -32,6 +32,11 @@ tl::expected<File, FileReadError> read_file_contents(const std::string& uri) {
         return tl::unexpected(FileReadError{ FileReadError::NOT_FOUND, ec });
     }
 
+    return path;
+}
+
+tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path& path) {
+    std::error_code ec;
     File ret;
 
     ret.last_write = std::filesystem::last_write_time(path, ec);
@@ -66,28 +71,33 @@ tl::expected<File, FileReadError> read_file_contents(const std::string& uri) {
 }
 
 
-tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_or_read(const std::string& uri) {
-    if (auto search = file_map.find(uri); search != file_map.end()) {
+tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_or_read(const std::string& uri_path) {
+    auto path = get_filesystem_path_from_uri_path(uri_path);
+    if (!path) {
+        return tl::unexpected(path.error());
+    }
+
+    if (auto search = file_map.find(*path); search != file_map.end()) {
         auto it = search->second;
         it->last_accessed = Clock::now();
 
         auto begin = file_list.begin();
         if (it != begin) {
             std::swap(*it, *begin);
-            file_map[begin->uri] = begin;
-            file_map[it->uri] = it;
+            file_map[begin->path] = begin;
+            file_map[it->path] = it;
         }
 
         return latest_file();
     }
 
-    auto read_file = read_file_contents(uri);
+    auto read_file = read_file_contents(*path);
     if (!read_file && read_file.error().type == FileReadError::IO_ERROR) {
         return tl::unexpected(read_file.error());
     }
 
     Entry new_entry;
-    new_entry.uri = uri;
+    new_entry.path = *path;
     if (read_file) {
         new_entry.file = std::move(*read_file);
     } else {
@@ -97,7 +107,7 @@ tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_o
 
     file_list.push_front(std::move(new_entry));
     auto it = file_list.begin();
-    file_map[it->uri] = it;
+    file_map[it->path] = it;
 
     return latest_file();
 }

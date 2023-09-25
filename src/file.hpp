@@ -3,7 +3,7 @@
 #include "common.hpp"
 #include <filesystem>
 #include <vector>
-#include <map>
+#include <unordered_map>
 #include <list>
 #include <chrono>
 #include <string>
@@ -33,6 +33,11 @@ struct FileReadError {
 tl::expected<std::filesystem::path, FileReadError> get_filesystem_path_from_uri_path(const std::string& uri_path);
 tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path& path);
 
+struct ReferenceWrappedPathHash {
+    size_t operator() (const std::reference_wrapper<const std::filesystem::path>& a) const {
+        return std::filesystem::hash_value(a);
+    }
+};
 
 struct FileCache {
     using Clock = std::chrono::steady_clock;
@@ -46,7 +51,7 @@ struct FileCache {
     using List = std::list<Entry>;
 
     List file_list;
-    std::map<std::reference_wrapper<const std::filesystem::path>, List::iterator, std::less<const std::filesystem::path>> file_map;
+    std::unordered_map<std::reference_wrapper<const std::filesystem::path>, List::iterator, ReferenceWrappedPathHash> file_map;
 
     tl::expected<std::reference_wrapper<const File>, FileReadError> get_or_read(const std::string& uri_path);
     tl::expected<std::reference_wrapper<const File>, FileReadError> latest_file() const;

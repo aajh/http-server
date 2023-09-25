@@ -91,11 +91,11 @@ tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_o
 
         it->last_accessed = now;
 
-        auto begin = file_list.begin();
-        if (it != begin) {
-            std::swap(*it, *begin);
+        if (it != file_list.begin()) {
+            file_list.push_front(std::move(*it));
+            file_list.erase(it);
+            auto begin = file_list.begin();
             file_map[begin->path] = begin;
-            file_map[it->path] = it;
         }
 
         return latest_file();

@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <fmt/core.h>
 
 #include "common.hpp"
 #include "socket.hpp"
@@ -27,11 +28,11 @@ int main(int argc, char** argv) {
 
     auto socket = Socket::bind_and_listen(port, LISTEN_BACKLOG);
     if (!socket) {
-        fprintf(stderr, "Failed to bind and listen to port %s: %s\n", port, socket.error());
+        fmt::print(stderr, "Failed to bind and listen to port {}: {}\n", port, socket.error());
         return -1;
     }
 
-    printf("Listening on port %s...\n", port);
+    fmt::print("Listening on port {}...\n", port);
 
     FileCache file_cache;
 
@@ -45,31 +46,30 @@ int main(int argc, char** argv) {
     while (true) {
         auto connection = socket->accept();
         if (!connection) {
-            fprintf(stderr, "accept: %s\n", connection.error());
+            fmt::print(stderr, "accept: {}\n", connection.error());
             continue;
         }
 
-        printf("\nConnection from address %s\n", connection->ip);
+        fmt::print("\nConnection from address {}\n", connection->ip);
 
         auto request = HttpRequest::receive(*connection);
         if (!request) {
-            fprintf(stderr, "Error while receiving the request: %s\n", request.error());
+            fmt::print(stderr, "Error while receiving the request: {}\n", request.error());
             continue;
         }
 
 
-        printf("Method: %s\n", to_string(request->method).data());
-        printf("Path: %s\n",request->path.data());
-
-        printf("Headers:\n");
+        fmt::print("Method: {}\n", to_string(request->method));
+        fmt::print("Path: {}\n", request->path);
+        fmt::print("Headers:\n");
         for (const auto& h : request->headers) {
-            printf("%s: %s\n", h.first.data(), h.second.data());
+            fmt::print("{}: {}\n", h.first, h.second);
         }
 
 
         if (request->path == "/" || request->path == "/index.html") {
             if (auto error = connection->send(root_response)) {
-                fprintf(stderr, "send: %s\n", error);
+                fmt::print(stderr, "send: {}\n", error);
                 continue;
             }
         } else {
@@ -94,11 +94,11 @@ int main(int argc, char** argv) {
                     case FileReadError::IO_ERROR:
                         h.status = 500;
                         if (error.message) {
-                            fprintf(stderr, "IO error: %s\n", error.message);
+                            fmt::print(stderr, "IO error: {}\n", error.message);
                         } else if (error.ec) {
-                            fprintf(stderr, "IO error: %s\n", error.ec.message().data());
+                            fmt::print(stderr, "IO error: {}\n", error.ec.message());
                         } else {
-                            fprintf(stderr, "Unknown IO error\n");
+                            fmt::print(stderr, "Unknown IO error\n");
                         }
                         break;
                 }
@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
                 auto response = h.build();
                 response.append(message);
                 if (auto error = connection->send(response)) {
-                    fprintf(stderr, "send: %s\n", error);
+                    fmt::print(stderr, "send: {}\n", error);
                 }
 
                 continue;
@@ -125,12 +125,12 @@ int main(int argc, char** argv) {
             const auto header = h.build();
 
             if (auto error = connection->send(header)) {
-                fprintf(stderr, "send: %s\n", error);
+                fmt::print(stderr, "send: {}\n", error);
                 continue;
             }
 
             if (auto error = connection->send(file.contents)) {
-                fprintf(stderr, "send: %s\n", error);
+                fmt::print(stderr, "send: {}\n", error);
                 continue;
             }
         }

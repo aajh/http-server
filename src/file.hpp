@@ -50,9 +50,17 @@ struct FileCache {
     };
     using List = std::list<Entry>;
 
+    static constexpr size_t MEGABYTE = 1024*1024;
+    static constexpr size_t MAX_CACHED_FILE_SIZE = 128*MEGABYTE;
+    static constexpr size_t MAX_CACHE_SIZE = 1024*MEGABYTE;
+    static constexpr size_t MAX_CACHE_ENTRIES = 1024;
+
     List file_list;
     std::unordered_map<std::reference_wrapper<const std::filesystem::path>, List::iterator, ReferenceWrappedPathHash> file_map;
 
+    size_t cache_size = 0;
+
     tl::expected<std::reference_wrapper<const File>, FileReadError> get_or_read(const std::string& uri_path);
     tl::expected<std::reference_wrapper<const File>, FileReadError> latest_file() const;
+    void trim();
 };

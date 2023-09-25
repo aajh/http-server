@@ -24,6 +24,12 @@ tl::expected<std::filesystem::path, FileReadError> get_filesystem_path_from_uri_
         return tl::unexpected(FileReadError{ FileReadError::INVALID_URI, ec });
     }
 
+    return path;
+}
+
+tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path& path) {
+    std::error_code ec;
+
     auto exists = std::filesystem::exists(path, ec);
     if (ec) {
         return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec });
@@ -32,11 +38,6 @@ tl::expected<std::filesystem::path, FileReadError> get_filesystem_path_from_uri_
         return tl::unexpected(FileReadError{ FileReadError::NOT_FOUND, ec });
     }
 
-    return path;
-}
-
-tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path& path) {
-    std::error_code ec;
     File ret;
 
     ret.last_write = std::filesystem::last_write_time(path, ec);
@@ -96,6 +97,10 @@ tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_o
         return tl::unexpected(read_file.error());
     }
 
+    if (read_file && read_file->contents.size() > MAX_CACHED_FILE_SIZE) {
+        return *read_file;
+    }
+
     Entry new_entry;
     new_entry.path = *path;
     if (read_file) {
@@ -109,6 +114,9 @@ tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_o
     auto it = file_list.begin();
     file_map[it->path] = it;
 
+    cache_size += it->file.contents.size();
+    trim();
+
     return latest_file();
 }
 
@@ -119,5 +127,14 @@ tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::lates
         return tl::unexpected(FileReadError{ entry.status });
     } else {
         return entry.file;
+    }
+}
+
+void FileCache::trim() {
+    while (cache_size > MAX_CACHE_SIZE || file_list.size() > MAX_CACHE_ENTRIES) {
+        const auto& entry = file_list.back();
+        cache_size -= entry.file.contents.size();
+        file_map.erase(entry.path);
+        file_list.pop_back();
     }
 }

@@ -2,16 +2,14 @@ Content-Type headers based on the file
 Test Linux compatibility
 
 FileCache:
-    Use paths instead of URIs
-    Limit cache size and number of entries
-    Don't cache large files
-    Evict old data from cache
     Listen for file updates
+    Limit the lifetime of cached files
 
 HttpRequest:
     Give errors for breaking request size limits
-    Parse URI completely
     Give errors for an invalid request-target
+    (Parse URI completely)
+    Wait for the HTTP request to complete
 
 General future things:
     Asynchronous IO

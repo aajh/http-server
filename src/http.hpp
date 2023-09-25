@@ -18,6 +18,8 @@ struct HttpResponseHeader {
     u16 status = 200;
     std::unordered_map<std::string, std::string> headers;
 
+    HttpResponseHeader() = default;
+
     std::string& operator[](const std::string& key) {
         return headers[key];
     }
@@ -41,6 +43,8 @@ struct HttpResponseHeader {
 
     const std::string_view& status_to_string() const;
     std::string build() const;
+
+    static std::string build_error(u16 status);
 };
 
 #define LIST_OF_HTTP_METHODS(DO)\

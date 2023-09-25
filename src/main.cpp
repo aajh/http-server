@@ -55,34 +55,27 @@ int main(int argc, char** argv) {
         auto request = HttpRequest::receive(*connection);
         if (!request) {
             fmt::print(stderr, "Error while receiving the request: ");
-
-            HttpResponseHeader h;
-            h["Connection"] = "close";
-
+            u16 status;
             switch (request.error()) {
                 case HttpRequest::SERVER_ERROR:
                     fmt::print(stderr, "server error\n");
-                    h.status = 500;
+                    status = 500;
                     break;
                 case HttpRequest::UNKNOWN_METHOD:
                     fmt::print(stderr, "unknown method\n");
-                    h.status = 501;
+                    status = 501;
                     break;
                 case HttpRequest::UNSUPPORTED_HTTP_VERSION:
                     fmt::print(stderr, "unsupported HTTP version\n");
-                    h.status = 505;
+                    status = 505;
                     break;
                 case HttpRequest::BAD_REQUEST:
                     fmt::print(stderr, "bad request\n");
-                    h.status = 400;
+                    status = 400;
                     break;
             }
 
-            const auto& message = h.status_to_string();
-            h.set_content_length(message.size());
-
-            auto response = h.build();
-            response.append(message);
+            auto response = HttpResponseHeader::build_error(status);
             if (auto error = connection->send(response)) {
                 fmt::print(stderr, "send: {}\n", error);
             }
@@ -110,21 +103,18 @@ int main(int argc, char** argv) {
             if (!file_result) {
                 const auto& error = file_result.error();
 
-                HttpResponseHeader h;
-                h.status = 500;
-                h["Connection"] = "close";
-
+                u16 status = 500;
                 switch (error.type) {
                     case FileReadError::OK:
                         break;
                     case FileReadError::INVALID_URI:
-                        h.status = 400;
+                        status = 400;
                         break;
                     case FileReadError::NOT_FOUND:
-                        h.status = 404;
+                        status = 404;
                         break;
                     case FileReadError::IO_ERROR:
-                        h.status = 500;
+                        status = 500;
                         if (error.message) {
                             fmt::print(stderr, "IO error: {}\n", error.message);
                         } else if (error.ec) {
@@ -135,11 +125,7 @@ int main(int argc, char** argv) {
                         break;
                 }
 
-                const auto& message = h.status_to_string();
-                h.set_content_length(message.size());
-
-                auto response = h.build();
-                response.append(message);
+                auto response = HttpResponseHeader::build_error(status);
                 if (auto error = connection->send(response)) {
                     fmt::print(stderr, "send: {}\n", error);
                 }

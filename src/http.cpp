@@ -103,6 +103,21 @@ std::string HttpResponseHeader::build() const {
     return fmt::to_string(res);
 }
 
+std::string HttpResponseHeader::build_error(u16 status) {
+        HttpResponseHeader h;
+        h.status = status;
+        h["Connection"] = "close";
+        h["Content-Type"] = "text/html";
+
+        const auto& message = h.status_to_string();
+        h.set_content_length(message.size());
+
+        auto response = h.build();
+        response.append(message);
+
+        return response;
+}
+
 
 #define METHOD_STRING(method) { method, #method },
 static const std::unordered_map<HttpMethod, std::string_view> METHOD_STRING_MAP = {

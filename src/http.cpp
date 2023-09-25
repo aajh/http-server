@@ -143,6 +143,14 @@ struct HttpRequestParser {
         return HttpRequestParser(connection, std::move(*buffer));
     }
 
+    static bool is_whitespace(char c) {
+        return c == ' ' || c == '\t';
+    }
+
+    static bool is_whitespace_or_line_break(char c) {
+        return is_whitespace(c) || c == '\r' || c == '\n';
+    }
+
     bool ensure_data(size_t length) {
         if (p + length <= end) return true;
 
@@ -186,7 +194,7 @@ struct HttpRequestParser {
 
     void eat_whitespace() {
         while (ensure_data(1)) {
-            if (!isspace(b[p])) return;
+            if (!is_whitespace(b[p])) return;
             advance();
         }
     }
@@ -206,7 +214,7 @@ struct HttpRequestParser {
         size_t start = p;
 
         while (ensure_data(1)) {
-            if (isspace(b[p])) break;
+            if (is_whitespace_or_line_break(b[p])) break;
             advance();
         }
 
@@ -225,7 +233,7 @@ struct HttpRequestParser {
             advance();
         }
 
-        size_t length = p - start;
+        size_t length = found_line_break ? p - start : 0;
         if (found_line_break) p += 2;
 
         return { &b[start], length };
@@ -241,7 +249,22 @@ struct HttpRequestParser {
 
         if (empty()) return {};
 
-        return {{ &b[start], p++ - start }};
+        std::string_view ret(&b[start], p++ - start);
+        if (!ret.size() || is_whitespace_or_line_break(ret[ret.size() - 1])) {
+            return {};
+        }
+
+        return ret;
+    }
+
+    std::string_view read_header_field() {
+        auto field = read_line();
+
+        while (field.size() && is_whitespace(field[field.size() - 1])) {
+            field.remove_suffix(1);
+        }
+
+        return field;
     }
 
     std::string read_request_target_returning_path() {
@@ -305,20 +328,25 @@ tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connecti
     if (http_version != HTTP_VERSION_1_1) {
         return tl::unexpected("Unsupported HTTP version");
     }
-    parser.read_newline();
+    if (!parser.read_newline()) {
+        return tl::unexpected("Bad request");
+    }
     parser.normalize();
 
     while (!parser.read_newline() && !parser.empty()) {
-        auto header_name = parser.read_header_name();
-        if (!header_name) break;
-        std::string key(*header_name);
+        auto header_name_result = parser.read_header_name();
+        if (!header_name_result) {
+            return tl::unexpected("Bad request");
+        }
+        std::string header_name(*header_name_result);
         parser.normalize();
 
         parser.eat_whitespace();
-        auto header_value = parser.read_line();
-        if (!header_value.size()) break;
-
-        request.headers[std::move(key)] = header_value;
+        auto field = parser.read_header_field();
+        if (!field.size()) {
+            return tl::unexpected("Bad request");
+        }
+        request.headers[std::move(header_name)] = field;
         parser.normalize();
     }
 

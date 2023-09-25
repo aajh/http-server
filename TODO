@@ -4,7 +4,10 @@ FileCache:
 HttpRequest:
     Give errors for breaking request size limits (and if the ring buffer wraps)
     Give errors for an invalid request-target
+    Replace CR, LF and NUL in header fields with SP
     (Parse URI completely)
+    (Read the body, if there's one)
+    (Case-insensitive handling of headers)
 
 General future things:
     Asynchronous IO

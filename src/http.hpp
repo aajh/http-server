@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 #include <chrono>
@@ -11,7 +12,7 @@
 
 struct Connection;
 
-extern const std::string UNKNOWN_STATUS;
+extern const std::string_view UNKNOWN_STATUS;
 
 struct HttpResponseHeader {
     u16 status = 200;
@@ -38,7 +39,7 @@ struct HttpResponseHeader {
         headers["Last-Modified"] = fmt::format("{:%a, %d %b %Y %H:%M:%S} GMT", std::chrono::floor<std::chrono::seconds>(time));
     }
 
-    const std::string& status_to_string() const;
+    const std::string_view& status_to_string() const;
     std::string build() const;
 };
 
@@ -58,8 +59,8 @@ enum HttpMethod {
     LIST_OF_HTTP_METHODS(METHOD_ENUM)
 };
 
-extern const std::string INVALID_METHOD_STRING;
-const std::string& to_string(HttpMethod method);
+extern const std::string_view INVALID_METHOD_STRING;
+const std::string_view& to_string(HttpMethod method);
 
 struct HttpRequest {
     HttpMethod method;

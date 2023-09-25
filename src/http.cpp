@@ -10,7 +10,7 @@
 
 static const char HTTP_VERSION_1_1[] = "HTTP/1.1";
 
-static const std::unordered_map<u16, std::string> STATUS_REASON_PHRASES = {
+static const std::unordered_map<u16, std::string_view> STATUS_REASON_PHRASES = {
     { 100, "Continue" },
     { 101, "Switching Protocols" },
     { 102, "Processing" },
@@ -75,13 +75,13 @@ static const std::unordered_map<u16, std::string> STATUS_REASON_PHRASES = {
     { 510, "Not Extended" },
     { 511, "Network Authentication Required" },
 };
-const std::string UNKNOWN_STATUS = "Unknown Status";
+const std::string_view UNKNOWN_STATUS = "Unknown Status";
 
 void HttpResponseHeader::set_content_length(size_t length) {
     headers["Content-Length"] = fmt::format("{}", length);
 }
 
-const std::string& HttpResponseHeader::status_to_string() const {
+const std::string_view& HttpResponseHeader::status_to_string() const {
     auto reason_phrase_search = STATUS_REASON_PHRASES.find(status);
     return reason_phrase_search != STATUS_REASON_PHRASES.end() ? reason_phrase_search->second : UNKNOWN_STATUS;
 }
@@ -104,17 +104,17 @@ std::string HttpResponseHeader::build() const {
 
 
 #define METHOD_STRING(method) { method, #method },
-static const std::unordered_map<HttpMethod, std::string> METHOD_STRING_MAP = {
+static const std::unordered_map<HttpMethod, std::string_view> METHOD_STRING_MAP = {
     LIST_OF_HTTP_METHODS(METHOD_STRING)
 };
 
 #define STRING_METHOD(method) { #method, method },
-static const std::map<std::string, HttpMethod, std::less<>> STRING_METHOD_MAP = {
+static const std::map<std::string_view, HttpMethod, std::less<>> STRING_METHOD_MAP = {
     LIST_OF_HTTP_METHODS(STRING_METHOD)
 };
 
-const std::string INVALID_METHOD_STRING = "Invalid method";
-const std::string& to_string(HttpMethod method) {
+const std::string_view INVALID_METHOD_STRING = "Invalid method";
+const std::string_view& to_string(HttpMethod method) {
     auto method_search = METHOD_STRING_MAP.find(method);
     if (method_search == METHOD_STRING_MAP.end()) {
         return INVALID_METHOD_STRING;

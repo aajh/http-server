@@ -3,7 +3,6 @@ Test Linux compatibility
 
 FileCache:
     Listen for file updates
-    Limit the lifetime of cached files
 
 HttpRequest:
     Give errors for breaking request size limits

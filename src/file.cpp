@@ -71,7 +71,6 @@ tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path
     return ret;
 }
 
-
 tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_or_read(const std::string& uri_path) {
     auto path = get_filesystem_path_from_uri_path(uri_path);
     if (!path) {
@@ -79,8 +78,18 @@ tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_o
     }
 
     if (auto search = file_map.find(*path); search != file_map.end()) {
-        auto it = search->second;
-        it->last_accessed = Clock::now();
+        const auto& it = search->second;
+        const auto now = Clock::now();
+
+        if (now - it->last_accessed > MAX_ENTRY_LIFETIME) {
+            cache_size -= it->file.contents.size();
+            file_list.erase(it);
+            file_map.erase(search);
+
+            goto read_file;
+        }
+
+        it->last_accessed = now;
 
         auto begin = file_list.begin();
         if (it != begin) {
@@ -92,6 +101,7 @@ tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_o
         return latest_file();
     }
 
+read_file:
     auto read_file = read_file_contents(*path);
     if (!read_file && read_file.error().type == FileReadError::IO_ERROR) {
         return tl::unexpected(read_file.error());

@@ -44,11 +44,10 @@ By default, the server will run on port 3000, but the port can be changed by giv
 ```
 
 The server will serve a static HTML response on paths `/` and `/index.html` and files from the `public` directory.
-You can make a request for example with
+You can make a request, for example, by typing
 ```
 telnet localhost 3000
 GET / HTTP/1.1
-
 
 ```
 

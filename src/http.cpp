@@ -156,7 +156,7 @@ struct HttpRequestParser {
         }
 
         end += *received_bytes;
-        return p + length < end;
+        return p + length <= end;
     }
 
     bool advance(size_t step = 1) {
@@ -170,17 +170,17 @@ struct HttpRequestParser {
     }
 
     void normalize() {
-        bool was_done = done();
+        bool was_empty = empty();
 
         p = b.normalized_index(p);
         end = b.normalized_index(end);
 
-        if (!was_done && end == 0) {
+        if (!was_empty && end == 0) {
             end = b.length;
         }
     }
 
-    bool done() {
+    bool empty() {
         return p == end;
     }
 
@@ -239,7 +239,7 @@ struct HttpRequestParser {
             advance();
         }
 
-        if (done()) return {};
+        if (empty()) return {};
 
         return {{ &b[start], p++ - start }};
     }
@@ -308,10 +308,7 @@ tl::expected<HttpRequest, const char*> HttpRequest::receive(Connection& connecti
     parser.read_newline();
     parser.normalize();
 
-
-    while (!parser.done()) {
-        if (parser.read_newline()) break;
-
+    while (!parser.read_newline() && !parser.empty()) {
         auto header_name = parser.read_header_name();
         if (!header_name) break;
         std::string key(*header_name);

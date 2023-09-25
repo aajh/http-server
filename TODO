@@ -5,7 +5,6 @@ HttpRequest:
     Give errors for breaking request size limits (and if the ring buffer wraps)
     Give errors for an invalid request-target
     (Parse URI completely)
-    Wait for the HTTP request to complete
 
 General future things:
     Asynchronous IO

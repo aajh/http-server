@@ -146,6 +146,7 @@ struct HttpRequestParser {
     Connection& connection;
     RingBuffer b;
     size_t p = 0, end = 0;
+    ssize_t token_start = -1;
 
     HttpRequestParser(Connection& connection, RingBuffer&& buffer) : connection(connection), b(std::move(buffer)) {}
 
@@ -178,7 +179,30 @@ struct HttpRequestParser {
             return false;
         }
 
+        if (token_start >= 0 && *received_bytes) {
+            auto n_start = b.normalized_index((size_t)token_start);
+            auto n_end = b.normalized_index(end);
+            auto n_new_end = b.normalized_index(end + *received_bytes);
+            bool end_wrapped = n_new_end <= n_end;
+
+            bool overwritten;
+            if (n_start < n_end) {
+                overwritten = end_wrapped && n_start < n_new_end;
+            } else {
+                // n_start > n_end
+                overwritten = end_wrapped || n_start < n_new_end;
+            }
+
+            if (overwritten) {
+                // TODO: Return a proper error, which can be reported to the sender
+                return false;
+            }
+        }
+
         end += *received_bytes;
+        if (token_start == -1) {
+            normalize();
+        }
         return p + length <= end;
     }
 
@@ -201,10 +225,21 @@ struct HttpRequestParser {
         if (!was_empty && end == 0) {
             end = b.length;
         }
+        if (end < p) {
+            end += b.length;
+            assert(end >= p);
+        }
     }
 
     bool empty() {
         return p == end;
+    }
+
+    std::string_view get_current_token() {
+        if (token_start == -1) return {};
+        auto start = token_start;
+        token_start = -1;
+        return { &b[start], p - start };
     }
 
     void eat_whitespace() {
@@ -226,18 +261,18 @@ struct HttpRequestParser {
     }
 
     std::string_view read_until_whitespace() {
-        size_t start = p;
+        token_start = p;
 
         while (ensure_data(1)) {
             if (is_whitespace_or_line_break(b[p])) break;
             advance();
         }
 
-        return { &b[start], p - start };
+        return get_current_token();
     }
 
     std::string_view read_line() {
-        size_t start = p;
+        token_start = p;
         bool found_line_break = false;
 
         while (ensure_data(2)) {
@@ -248,14 +283,18 @@ struct HttpRequestParser {
             advance();
         }
 
-        size_t length = found_line_break ? p - start : 0;
-        if (found_line_break) p += 2;
+        if (!found_line_break) {
+            token_start = -1;
+            return {};
+        }
 
-        return { &b[start], length };
+        auto token = get_current_token();
+        p += 2;
+        return token;
     }
 
     std::optional<std::string_view> read_header_name() {
-        size_t start = p;
+        token_start = p;
 
         while (ensure_data(1)) {
             if (b[p] == ':') break;
@@ -264,12 +303,14 @@ struct HttpRequestParser {
 
         if (empty()) return {};
 
-        std::string_view ret(&b[start], p++ - start);
-        if (!ret.size() || is_whitespace_or_line_break(ret[ret.size() - 1])) {
+        auto token = get_current_token();
+        ++p;
+
+        if (!token.size() || is_whitespace_or_line_break(token[token.size() - 1])) {
             return {};
         }
 
-        return ret;
+        return token;
     }
 
     std::string_view read_header_field() {
@@ -347,7 +388,6 @@ tl::expected<HttpRequest, HttpRequest::ReceiveError> HttpRequest::receive(Connec
     if (!parser.read_newline()) {
         return tl::unexpected(BAD_REQUEST);
     }
-    parser.normalize();
 
     while (!parser.read_newline() && !parser.empty()) {
         auto header_name_result = parser.read_header_name();
@@ -355,7 +395,6 @@ tl::expected<HttpRequest, HttpRequest::ReceiveError> HttpRequest::receive(Connec
             return tl::unexpected(BAD_REQUEST);
         }
         std::string header_name(*header_name_result);
-        parser.normalize();
 
         parser.eat_whitespace();
         auto field = parser.read_header_field();
@@ -363,7 +402,6 @@ tl::expected<HttpRequest, HttpRequest::ReceiveError> HttpRequest::receive(Connec
             return tl::unexpected(BAD_REQUEST);
         }
         request.headers[std::move(header_name)] = field;
-        parser.normalize();
     }
 
     return request;

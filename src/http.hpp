@@ -76,6 +76,7 @@ struct HttpRequest {
         UNKNOWN_METHOD,
         UNSUPPORTED_HTTP_VERSION,
         BAD_REQUEST,
+        PAYLOAD_TOO_LARGE,
     };
     static tl::expected<HttpRequest, ReceiveError> receive(Connection&);
 };

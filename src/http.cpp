@@ -143,6 +143,13 @@ struct HttpRequestParser {
     static constexpr size_t MIN_BUFFER_LENGTH = 2*MAX_TOKEN_LENGTH;
     static constexpr size_t RECEIVE_CHUNK_SIZE = MAX_TOKEN_LENGTH;
 
+    enum Error {
+        OK = 0,
+        PAYLOAD_TOO_LARGE,
+        SERVER_ERROR,
+        BAD_REQUEST,
+    };
+
     Connection& connection;
     RingBuffer b;
     size_t p = 0, end = 0;
@@ -167,22 +174,29 @@ struct HttpRequestParser {
         return is_whitespace(c) || c == '\r' || c == '\n';
     }
 
-    bool ensure_data(size_t length) {
-        if (p + length <= end) return true;
+    [[nodiscard]] Error ensure_data(size_t length) {
+        if (p + length <= end) return OK;
 
         if (!b.is_in_range(end - 1 + RECEIVE_CHUNK_SIZE)) {
-            return false;
+            return SERVER_ERROR;
         }
 
-        auto received_bytes = connection.receive(&b[end], RECEIVE_CHUNK_SIZE);
-        if (!received_bytes) {
-            return false;
+        size_t total_received_bytes = 0;
+        while (total_received_bytes < length) {
+            auto received_bytes = connection.receive(&b[end], RECEIVE_CHUNK_SIZE);
+            if (!received_bytes) {
+                return SERVER_ERROR;
+            }
+            if (*received_bytes == 0) {
+                return BAD_REQUEST;
+            }
+            total_received_bytes += *received_bytes;
         }
 
-        if (token_start >= 0 && *received_bytes) {
+        if (token_start >= 0) {
             auto n_start = b.normalized_index((size_t)token_start);
             auto n_end = b.normalized_index(end);
-            auto n_new_end = b.normalized_index(end + *received_bytes);
+            auto n_new_end = b.normalized_index(end + total_received_bytes);
             bool end_wrapped = n_new_end <= n_end;
 
             bool overwritten;
@@ -193,27 +207,14 @@ struct HttpRequestParser {
                 overwritten = end_wrapped || n_start < n_new_end;
             }
 
-            if (overwritten) {
-                // TODO: Return a proper error, which can be reported to the sender
-                return false;
-            }
+            if (overwritten) return PAYLOAD_TOO_LARGE;
         }
 
-        end += *received_bytes;
+        end += total_received_bytes;
         if (token_start == -1) {
             normalize();
         }
-        return p + length <= end;
-    }
-
-    bool advance(size_t step = 1) {
-        if (ensure_data(step)) {
-            p += step;
-            return true;
-        } else {
-            p = end;
-            return false;
-        }
+        return OK;
     }
 
     void normalize() {
@@ -242,15 +243,16 @@ struct HttpRequestParser {
         return { &b[start], p - start };
     }
 
-    void eat_whitespace() {
-        while (ensure_data(1)) {
-            if (!is_whitespace(b[p])) return;
-            advance();
+    [[nodiscard]] Error eat_whitespace() {
+        while (true) {
+            if (auto error = ensure_data(1)) return error;
+            if (!is_whitespace(b[p])) return OK;
+            ++p;
         }
     }
 
-    bool read_newline() {
-        if (!ensure_data(2)) return false;
+    [[nodiscard]] tl::expected<bool, Error> maybe_read_newline() {
+        if (auto error = ensure_data(2)) return error;
 
         if (b[p] == '\r' && b[p + 1] == '\n') {
             p += 2;
@@ -260,32 +262,25 @@ struct HttpRequestParser {
         return false;
     }
 
-    std::string_view read_until_whitespace() {
+    [[nodiscard]] tl::expected<std::string_view, Error> read_until_whitespace() {
         token_start = p;
 
-        while (ensure_data(1)) {
+        while (true) {
+            if (auto error = ensure_data(1)) return tl::unexpected(error);
             if (is_whitespace_or_line_break(b[p])) break;
-            advance();
+            ++p;
         }
 
         return get_current_token();
     }
 
-    std::string_view read_line() {
+    [[nodiscard]] tl::expected<std::string_view, Error> read_line() {
         token_start = p;
-        bool found_line_break = false;
 
-        while (ensure_data(2)) {
-            if (b[p] == '\r' && b[p + 1] == '\n') {
-                found_line_break = true;
-                break;
-            }
-            advance();
-        }
-
-        if (!found_line_break) {
-            token_start = -1;
-            return {};
+        while (true) {
+            if (auto error = ensure_data(2)) return tl::unexpected(error);
+            if (b[p] == '\r' && b[p + 1] == '\n') break;
+            ++p;
         }
 
         auto token = get_current_token();
@@ -293,38 +288,42 @@ struct HttpRequestParser {
         return token;
     }
 
-    std::optional<std::string_view> read_header_name() {
+    [[nodiscard]] tl::expected<std::string_view, Error> read_header_name() {
         token_start = p;
 
-        while (ensure_data(1)) {
+        while (true) {
+            if (auto error = ensure_data(1)) return tl::unexpected(error);
             if (b[p] == ':') break;
-            advance();
+            ++p;
         }
-
-        if (empty()) return {};
 
         auto token = get_current_token();
         ++p;
 
         if (!token.size() || is_whitespace_or_line_break(token[token.size() - 1])) {
-            return {};
+            return tl::unexpected(BAD_REQUEST);
         }
 
         return token;
     }
 
-    std::string_view read_header_field() {
-        auto field = read_line();
+    [[nodiscard]] tl::expected<std::string_view, Error> read_header_field() {
+        auto line = read_line();
+        if (!line) return tl::unexpected(line.error());
+        auto& field = *line;
 
         while (field.size() && is_whitespace(field[field.size() - 1])) {
             field.remove_suffix(1);
         }
 
+        if (!field.size()) return tl::unexpected(BAD_REQUEST);
         return field;
     }
 
-    std::string read_request_target_returning_path() {
-        auto request_target = read_until_whitespace();
+    [[nodiscard]] tl::expected<std::string, Error> read_request_target_returning_path() {
+        auto token = read_until_whitespace();
+        if (!token) return tl::unexpected(token.error());
+        auto& request_target = *token;
 
         auto it = request_target.begin();
         while (it != request_target.end() && *it != '/') {
@@ -361,6 +360,21 @@ struct HttpRequestParser {
     }
 };
 
+static HttpRequest::ReceiveError parse_error_to_receive_error(HttpRequestParser::Error parse_error) {
+    using R = HttpRequest;
+    using P = HttpRequestParser;
+    switch (parse_error) {
+        case P::OK:
+            return R::SERVER_ERROR;
+        case P::PAYLOAD_TOO_LARGE:
+            return R::PAYLOAD_TOO_LARGE;
+        case P::SERVER_ERROR:
+            return R::SERVER_ERROR;
+        case P::BAD_REQUEST:
+            return R::BAD_REQUEST;
+    }
+}
+
 tl::expected<HttpRequest, HttpRequest::ReceiveError> HttpRequest::receive(Connection& connection) {
     HttpRequest request;
     auto parser_creation = HttpRequestParser::create(connection);
@@ -369,39 +383,59 @@ tl::expected<HttpRequest, HttpRequest::ReceiveError> HttpRequest::receive(Connec
     }
     auto& parser = *parser_creation;
 
-    parser.read_newline();
+    if (auto result = parser.maybe_read_newline(); !result) {
+        return tl::unexpected(parse_error_to_receive_error(result.error()));
+    }
     auto method_string = parser.read_until_whitespace();
-    auto method_search = STRING_METHOD_MAP.find(method_string);
+    if (!method_string) return tl::unexpected(parse_error_to_receive_error(method_string.error()));
+    auto method_search = STRING_METHOD_MAP.find(*method_string);
     if (method_search == STRING_METHOD_MAP.end()) {
         return tl::unexpected(UNKNOWN_METHOD);
     }
     request.method = method_search->second;
 
-    parser.eat_whitespace();
-    request.path = parser.read_request_target_returning_path();
+    if (auto error = parser.eat_whitespace()) {
+        return tl::unexpected(parse_error_to_receive_error(error));
+    }
+    auto path = parser.read_request_target_returning_path();
+    if (!path) return tl::unexpected(parse_error_to_receive_error(path.error()));
+    request.path = *path;
 
-    parser.eat_whitespace();
+    if (auto error = parser.eat_whitespace()) {
+        return tl::unexpected(parse_error_to_receive_error(error));
+    }
     auto http_version = parser.read_until_whitespace();
-    if (http_version != HTTP_VERSION_1_1) {
+    if (!http_version) {
+        return tl::unexpected(parse_error_to_receive_error(http_version.error()));
+    }
+    if (*http_version != HTTP_VERSION_1_1) {
         return tl::unexpected(UNSUPPORTED_HTTP_VERSION);
     }
-    if (!parser.read_newline()) {
-        return tl::unexpected(BAD_REQUEST);
+
+    if (auto result = parser.maybe_read_newline(); !result || !*result) {
+        return result ? tl::unexpected(BAD_REQUEST) : tl::unexpected(parse_error_to_receive_error(result.error()));
     }
 
-    while (!parser.read_newline() && !parser.empty()) {
+    while (true) {
+        auto read_newline = parser.maybe_read_newline();
+        if (!read_newline) return tl::unexpected(parse_error_to_receive_error(read_newline.error()));
+        if (*read_newline) break;
+
         auto header_name_result = parser.read_header_name();
         if (!header_name_result) {
-            return tl::unexpected(BAD_REQUEST);
+            return tl::unexpected(parse_error_to_receive_error(header_name_result.error()));
         }
         std::string header_name(*header_name_result);
 
-        parser.eat_whitespace();
-        auto field = parser.read_header_field();
-        if (!field.size()) {
-            return tl::unexpected(BAD_REQUEST);
+        if (auto error = parser.eat_whitespace()) {
+            return tl::unexpected(parse_error_to_receive_error(error));
         }
-        request.headers[std::move(header_name)] = field;
+
+        auto field = parser.read_header_field();
+        if (!field) {
+            return tl::unexpected(parse_error_to_receive_error(field.error()));
+        }
+        request.headers[std::move(header_name)] = *field;
     }
 
     return request;

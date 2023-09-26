@@ -73,6 +73,10 @@ int main(int argc, char** argv) {
                     fmt::print(stderr, "bad request\n");
                     status = 400;
                     break;
+                case HttpRequest::PAYLOAD_TOO_LARGE:
+                    fmt::print(stderr, "payload too large\n");
+                    status = 413;
+                    break;
             }
 
             auto response = HttpResponseHeader::build_error(status);

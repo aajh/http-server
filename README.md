@@ -16,7 +16,7 @@ First install fmt library version 10.1.1 and other needed packages. This can be 
 # macOS with Homebrew
 brew install fmt@10.1.1
 
-# Linux with APT
+# Ubuntu
 sudo apt install build-essential cmake pkg-config
 cd ~
 wget https://github.com/fmtlib/fmt/releases/download/10.1.1/fmt-10.1.1.zip

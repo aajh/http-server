@@ -412,14 +412,18 @@ tl::expected<HttpRequest, HttpRequest::ReceiveError> HttpRequest::receive(Connec
         return tl::unexpected(UNSUPPORTED_HTTP_VERSION);
     }
 
-    if (auto result = parser.maybe_read_newline(); !result || !*result) {
-        return result ? tl::unexpected(BAD_REQUEST) : tl::unexpected(parse_error_to_receive_error(result.error()));
+    if (auto result = parser.maybe_read_newline(); !result) {
+        return tl::unexpected(parse_error_to_receive_error(result.error()));
+    } else if (!*result) {
+        return tl::unexpected(BAD_REQUEST);
     }
 
     while (true) {
-        auto read_newline = parser.maybe_read_newline();
-        if (!read_newline) return tl::unexpected(parse_error_to_receive_error(read_newline.error()));
-        if (*read_newline) break;
+        if (auto read_newline = parser.maybe_read_newline(); !read_newline) {
+            return tl::unexpected(parse_error_to_receive_error(read_newline.error()));
+        } else if (*read_newline) {
+            break;
+        }
 
         auto header_name_result = parser.read_header_name();
         if (!header_name_result) {

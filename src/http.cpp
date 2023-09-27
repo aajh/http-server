@@ -193,14 +193,14 @@ struct HttpRequestParser {
             total_received_bytes += *received_bytes;
         }
 
-        if (token_start >= 0) {
+        if (token_start >= 0 && (end - (size_t)token_start) > 0) {
             auto n_start = b.normalized_index((size_t)token_start);
             auto n_end = b.normalized_index(end);
             auto n_new_end = b.normalized_index(end + total_received_bytes);
             bool end_wrapped = n_new_end <= n_end;
 
             bool overwritten;
-            if (n_start < n_end) {
+            if (n_start <= n_end) {
                 overwritten = end_wrapped && n_start < n_new_end;
             } else {
                 // n_start > n_end

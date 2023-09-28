@@ -178,7 +178,7 @@ struct HttpRequestParser {
         if (p + length <= end) return OK;
 
         if (!b.is_in_range(end - 1 + RECEIVE_CHUNK_SIZE)) {
-            return SERVER_ERROR;
+            return PAYLOAD_TOO_LARGE;
         }
 
         size_t total_received_bytes = 0;
@@ -238,9 +238,14 @@ struct HttpRequestParser {
 
     std::string_view get_current_token() {
         if (token_start == -1) return {};
+
         auto start = token_start;
+        auto length = p - start;
+
         token_start = -1;
-        return { &b[start], p - start };
+        normalize();
+
+        return { &b[start], length };
     }
 
     [[nodiscard]] Error eat_whitespace() {

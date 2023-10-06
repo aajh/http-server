@@ -1,13 +1,12 @@
-#include <stdio.h>
+#include <cstdlib>
+#include <limits>
 #include <fmt/core.h>
 
 #include "common.hpp"
-#include "socket.hpp"
 #include "http.hpp"
 #include "file.hpp"
 
-const char DEFAULT_PORT[] = "3000";
-const int LISTEN_BACKLOG = 10;
+const u16 DEFAULT_PORT = 3000;
 
 const char DEFAULT_HTML_DOCUMENT[] =
 "<!DOCTYPE html>"
@@ -23,36 +22,11 @@ const char DEFAULT_HTML_DOCUMENT[] =
 "</html>"
 ;
 
-int main(int argc, char** argv) {
-    auto port = argc > 1 ? argv[1] : DEFAULT_PORT;
+awaitable<void> handle_connection(asio::ip::tcp::socket socket, FileCache& file_cache) {
+    try {
+        auto executor = co_await this_coro::executor;
 
-    auto socket = Socket::bind_and_listen(port, LISTEN_BACKLOG);
-    if (!socket) {
-        fmt::print(stderr, "Failed to bind and listen to port {}: {}\n", port, socket.error());
-        return -1;
-    }
-
-    fmt::print("Listening on port {}...\n", port);
-
-    FileCache file_cache;
-
-    HttpResponseHeader h;
-    h["Connection"] = "close";
-    h["Content-Type"] = "text/html";
-    h.set_content_length(sizeof(DEFAULT_HTML_DOCUMENT) - 1);
-    auto root_response = h.build();
-    root_response.append(DEFAULT_HTML_DOCUMENT);
-
-    while (true) {
-        auto connection = socket->accept();
-        if (!connection) {
-            fmt::print(stderr, "accept: {}\n", connection.error());
-            continue;
-        }
-
-        fmt::print("\nConnection from address {}\n", connection->ip);
-
-        auto request = HttpRequest::receive(*connection);
+        auto request = co_await HttpRequest::receive(socket);
         if (!request) {
             fmt::print(stderr, "Error while receiving the request: ");
             u16 status;
@@ -80,13 +54,9 @@ int main(int argc, char** argv) {
             }
 
             auto response = HttpResponseHeader::build_error(status);
-            if (auto error = connection->send(response)) {
-                fmt::print(stderr, "send: {}\n", error);
-            }
-
-            continue;
+            co_await async_write(socket, asio::buffer(response), use_awaitable);
+            co_return;
         }
-
 
         fmt::print("Method: {}\n", to_string(request->method));
         fmt::print("Path: {}\n", request->path);
@@ -97,10 +67,14 @@ int main(int argc, char** argv) {
 
 
         if (request->path == "/" || request->path == "/index.html") {
-            if (auto error = connection->send(root_response)) {
-                fmt::print(stderr, "send: {}\n", error);
-                continue;
-            }
+            auto content_length = sizeof(DEFAULT_HTML_DOCUMENT) - 1;
+            HttpResponseHeader h;
+            h["Connection"] = "close";
+            h["Content-Type"] = "text/html";
+            h.set_content_length(content_length);
+            auto header = h.build();
+            co_await async_write(socket, asio::buffer(header), use_awaitable);
+            co_await async_write(socket, asio::buffer(DEFAULT_HTML_DOCUMENT, content_length), use_awaitable);
         } else {
             const auto file_result = file_cache.get_or_read(request->path);
 
@@ -130,11 +104,8 @@ int main(int argc, char** argv) {
                 }
 
                 auto response = HttpResponseHeader::build_error(status);
-                if (auto error = connection->send(response)) {
-                    fmt::print(stderr, "send: {}\n", error);
-                }
-
-                continue;
+                co_await async_write(socket, asio::buffer(response), use_awaitable);
+                co_return;
             }
 
             const auto& file = file_result->get();
@@ -146,16 +117,46 @@ int main(int argc, char** argv) {
             h.set_last_modified(file.last_write);
             const auto header = h.build();
 
-            if (auto error = connection->send(header)) {
-                fmt::print(stderr, "send: {}\n", error);
-                continue;
-            }
-
-            if (auto error = connection->send(file.contents)) {
-                fmt::print(stderr, "send: {}\n", error);
-                continue;
-            }
+            co_await async_write(socket, asio::buffer(header), use_awaitable);
+            co_await async_write(socket, asio::buffer(file.contents), use_awaitable);
         }
+    } catch (std::exception& e) {
+        fmt::print("Error: {}\n", e.what());
+    }
+}
+
+awaitable<void> listener(u16 port) {
+    try {
+        auto executor = co_await this_coro::executor;
+
+        FileCache file_cache;
+
+        asio::ip::tcp::acceptor acceptor(executor, {asio::ip::tcp::v4(), port}, false);
+        fmt::print("Listening on port {}...\n", port);
+
+        while (true) {
+            auto socket = co_await acceptor.async_accept(use_awaitable);
+            auto remote_endpoint = socket.remote_endpoint();
+            fmt::print("\nNew connection from address: {}:{}\n", remote_endpoint.address().to_string(), remote_endpoint.port());
+            co_spawn(executor, handle_connection(std::move(socket), file_cache), detached);
+        }
+    } catch (std::exception& e) {
+        fmt::print("Error: {}\n", e.what());
+    }
+}
+
+int main(int argc, char** argv) {
+    auto port = argc > 1 ? strtoul(argv[1], nullptr, 10) : std::numeric_limits<u32>::max();
+    if (port > std::numeric_limits<u16>::max()) {
+        port = DEFAULT_PORT;
+    }
+
+    try {
+        asio::io_context io_context(1);
+        co_spawn(io_context, listener(port), detached);
+        io_context.run();
+    } catch (std::exception& e) {
+        fmt::print("Error: {}\n", e.what());
     }
 
     return 0;

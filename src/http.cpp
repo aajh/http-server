@@ -6,7 +6,6 @@
 #include <string_view>
 #include <optional>
 #include <fmt/format.h>
-#include "socket.hpp"
 #include "ring_buffer.hpp"
 
 static const char HTTP_VERSION_1_1[] = "HTTP/1.1";
@@ -150,14 +149,14 @@ struct HttpRequestParser {
         BAD_REQUEST,
     };
 
-    Connection& connection;
+    asio::ip::tcp::socket& connection;
     RingBuffer b;
     size_t p = 0, end = 0;
     ssize_t token_start = -1;
 
-    HttpRequestParser(Connection& connection, RingBuffer&& buffer) : connection(connection), b(std::move(buffer)) {}
+    HttpRequestParser(asio::ip::tcp::socket& connection, RingBuffer&& buffer) : connection(connection), b(std::move(buffer)) {}
 
-    static tl::expected<HttpRequestParser, const char*> create(Connection& connection) {
+    static tl::expected<HttpRequestParser, const char*> create(asio::ip::tcp::socket& connection) {
         auto buffer = RingBuffer::create(MIN_BUFFER_LENGTH);
         if (!buffer) {
             return tl::unexpected(buffer.error());
@@ -174,23 +173,24 @@ struct HttpRequestParser {
         return is_whitespace(c) || c == '\r' || c == '\n';
     }
 
-    [[nodiscard]] Error ensure_data(size_t length) {
-        if (p + length <= end) return OK;
+    awaitable<Error> ensure_data(size_t length) {
+        if (p + length <= end) co_return OK;
 
         if (!b.is_in_range(end - 1 + RECEIVE_CHUNK_SIZE)) {
-            return PAYLOAD_TOO_LARGE;
+            co_return PAYLOAD_TOO_LARGE;
         }
 
         size_t total_received_bytes = 0;
         while (total_received_bytes < length) {
-            auto received_bytes = connection.receive(&b[end], RECEIVE_CHUNK_SIZE);
-            if (!received_bytes) {
-                return SERVER_ERROR;
+            try {
+                auto received_bytes = co_await connection.async_receive(asio::buffer(&b[end], RECEIVE_CHUNK_SIZE), use_awaitable);
+                if (received_bytes == 0) {
+                    co_return BAD_REQUEST;
+                }
+                total_received_bytes += received_bytes;
+            } catch (std::exception&) {
+                co_return SERVER_ERROR;
             }
-            if (*received_bytes == 0) {
-                return BAD_REQUEST;
-            }
-            total_received_bytes += *received_bytes;
         }
 
         if (token_start >= 0 && (end - (size_t)token_start) > 0) {
@@ -207,14 +207,14 @@ struct HttpRequestParser {
                 overwritten = end_wrapped || n_start < n_new_end;
             }
 
-            if (overwritten) return PAYLOAD_TOO_LARGE;
+            if (overwritten) co_return PAYLOAD_TOO_LARGE;
         }
 
         end += total_received_bytes;
         if (token_start == -1) {
             normalize();
         }
-        return OK;
+        co_return OK;
     }
 
     void normalize() {
@@ -248,56 +248,56 @@ struct HttpRequestParser {
         return { &b[start], length };
     }
 
-    [[nodiscard]] Error eat_whitespace() {
+    awaitable<Error> eat_whitespace() {
         while (true) {
-            if (auto error = ensure_data(1)) return error;
-            if (!is_whitespace(b[p])) return OK;
+            if (auto error = co_await ensure_data(1)) co_return error;
+            if (!is_whitespace(b[p])) co_return OK;
             ++p;
         }
     }
 
-    [[nodiscard]] tl::expected<bool, Error> maybe_read_newline() {
-        if (auto error = ensure_data(2)) return tl::unexpected(error);
+    awaitable<tl::expected<bool, Error>> maybe_read_newline() {
+        if (auto error = co_await ensure_data(2)) co_return tl::unexpected(error);
 
         if (b[p] == '\r' && b[p + 1] == '\n') {
             p += 2;
-            return true;
+            co_return true;
         }
 
-        return false;
+        co_return false;
     }
 
-    [[nodiscard]] tl::expected<std::string_view, Error> read_until_whitespace() {
+    awaitable<tl::expected<std::string_view, Error>> read_until_whitespace() {
         token_start = p;
 
         while (true) {
-            if (auto error = ensure_data(1)) return tl::unexpected(error);
+            if (auto error = co_await ensure_data(1)) co_return tl::unexpected(error);
             if (is_whitespace_or_line_break(b[p])) break;
             ++p;
         }
 
-        return get_current_token();
+        co_return get_current_token();
     }
 
-    [[nodiscard]] tl::expected<std::string_view, Error> read_line() {
+    awaitable<tl::expected<std::string_view, Error>> read_line() {
         token_start = p;
 
         while (true) {
-            if (auto error = ensure_data(2)) return tl::unexpected(error);
+            if (auto error = co_await ensure_data(2)) co_return tl::unexpected(error);
             if (b[p] == '\r' && b[p + 1] == '\n') break;
             ++p;
         }
 
         auto token = get_current_token();
         p += 2;
-        return token;
+        co_return token;
     }
 
-    [[nodiscard]] tl::expected<std::string_view, Error> read_header_name() {
+    awaitable<tl::expected<std::string_view, Error>> read_header_name() {
         token_start = p;
 
         while (true) {
-            if (auto error = ensure_data(1)) return tl::unexpected(error);
+            if (auto error = co_await ensure_data(1)) co_return tl::unexpected(error);
             if (b[p] == ':') break;
             ++p;
         }
@@ -306,35 +306,35 @@ struct HttpRequestParser {
         ++p;
 
         if (!token.size() || is_whitespace_or_line_break(token[token.size() - 1])) {
-            return tl::unexpected(BAD_REQUEST);
+            co_return tl::unexpected(BAD_REQUEST);
         }
 
-        return token;
+        co_return token;
     }
 
-    [[nodiscard]] tl::expected<std::string_view, Error> read_header_field() {
-        auto line = read_line();
-        if (!line) return tl::unexpected(line.error());
+    awaitable<tl::expected<std::string_view, Error>> read_header_field() {
+        auto line = co_await read_line();
+        if (!line) co_return tl::unexpected(line.error());
         auto& field = *line;
 
         while (field.size() && is_whitespace(field[field.size() - 1])) {
             field.remove_suffix(1);
         }
 
-        if (!field.size()) return tl::unexpected(BAD_REQUEST);
-        return field;
+        if (!field.size()) co_return tl::unexpected(BAD_REQUEST);
+        co_return field;
     }
 
-    [[nodiscard]] tl::expected<std::string, Error> read_request_target_returning_path() {
-        auto token = read_until_whitespace();
-        if (!token) return tl::unexpected(token.error());
+    awaitable<tl::expected<std::string, Error>> read_request_target_returning_path() {
+        auto token = co_await read_until_whitespace();
+        if (!token) co_return tl::unexpected(token.error());
         auto& request_target = *token;
 
         auto it = request_target.begin();
         while (it != request_target.end() && *it != '/') {
             ++it;
         }
-        if (it == request_target.end()) return "/";
+        if (it == request_target.end()) co_return "/";
 
         std::string path = "/";
 
@@ -343,7 +343,7 @@ struct HttpRequestParser {
             if (*it != '%') {
                 path.push_back(*it);
             } else {
-                if (++it == request_target.end()) return "/"; // Invalid URI
+                if (++it == request_target.end()) co_return "/"; // Invalid URI
                 if (*it == '%') {
                     path.push_back('%');
                     continue;
@@ -352,7 +352,7 @@ struct HttpRequestParser {
                 char hex[3] = { '\0' };
                 hex[0] = *it;
 
-                if (++it == request_target.end()) return "/"; // Invalid URI
+                if (++it == request_target.end()) co_return "/"; // Invalid URI
                 hex[1] = *it;
 
                 auto value = strtoul(hex, nullptr, 16);
@@ -361,7 +361,7 @@ struct HttpRequestParser {
             }
         }
 
-        return path;
+        co_return path;
     }
 };
 
@@ -379,73 +379,72 @@ static HttpRequest::ReceiveError parse_error_to_receive_error(HttpRequestParser:
             return R::BAD_REQUEST;
     }
 }
-
-tl::expected<HttpRequest, HttpRequest::ReceiveError> HttpRequest::receive(Connection& connection) {
+awaitable<tl::expected<HttpRequest, HttpRequest::ReceiveError>> HttpRequest::receive(asio::ip::tcp::socket& connection) {
     HttpRequest request;
     auto parser_creation = HttpRequestParser::create(connection);
     if (!parser_creation) {
-        return tl::unexpected(SERVER_ERROR);
+        co_return tl::unexpected(SERVER_ERROR);
     }
     auto& parser = *parser_creation;
 
-    if (auto result = parser.maybe_read_newline(); !result) {
-        return tl::unexpected(parse_error_to_receive_error(result.error()));
+    if (auto result = co_await parser.maybe_read_newline(); !result) {
+        co_return tl::unexpected(parse_error_to_receive_error(result.error()));
     }
-    auto method_string = parser.read_until_whitespace();
-    if (!method_string) return tl::unexpected(parse_error_to_receive_error(method_string.error()));
+    auto method_string = co_await parser.read_until_whitespace();
+    if (!method_string) co_return tl::unexpected(parse_error_to_receive_error(method_string.error()));
     auto method_search = STRING_METHOD_MAP.find(*method_string);
     if (method_search == STRING_METHOD_MAP.end()) {
-        return tl::unexpected(UNKNOWN_METHOD);
+        co_return tl::unexpected(UNKNOWN_METHOD);
     }
     request.method = method_search->second;
 
-    if (auto error = parser.eat_whitespace()) {
-        return tl::unexpected(parse_error_to_receive_error(error));
+    if (auto error = co_await parser.eat_whitespace()) {
+        co_return tl::unexpected(parse_error_to_receive_error(error));
     }
-    auto path = parser.read_request_target_returning_path();
-    if (!path) return tl::unexpected(parse_error_to_receive_error(path.error()));
+    auto path = co_await parser.read_request_target_returning_path();
+    if (!path) co_return tl::unexpected(parse_error_to_receive_error(path.error()));
     request.path = *path;
 
-    if (auto error = parser.eat_whitespace()) {
-        return tl::unexpected(parse_error_to_receive_error(error));
+    if (auto error = co_await parser.eat_whitespace()) {
+        co_return tl::unexpected(parse_error_to_receive_error(error));
     }
-    auto http_version = parser.read_until_whitespace();
+    auto http_version = co_await parser.read_until_whitespace();
     if (!http_version) {
-        return tl::unexpected(parse_error_to_receive_error(http_version.error()));
+        co_return tl::unexpected(parse_error_to_receive_error(http_version.error()));
     }
     if (*http_version != HTTP_VERSION_1_1) {
-        return tl::unexpected(UNSUPPORTED_HTTP_VERSION);
+        co_return tl::unexpected(UNSUPPORTED_HTTP_VERSION);
     }
 
-    if (auto result = parser.maybe_read_newline(); !result) {
-        return tl::unexpected(parse_error_to_receive_error(result.error()));
+    if (auto result = co_await parser.maybe_read_newline(); !result) {
+        co_return tl::unexpected(parse_error_to_receive_error(result.error()));
     } else if (!*result) {
-        return tl::unexpected(BAD_REQUEST);
+        co_return tl::unexpected(BAD_REQUEST);
     }
 
     while (true) {
-        if (auto read_newline = parser.maybe_read_newline(); !read_newline) {
-            return tl::unexpected(parse_error_to_receive_error(read_newline.error()));
+        if (auto read_newline = co_await parser.maybe_read_newline(); !read_newline) {
+            co_return tl::unexpected(parse_error_to_receive_error(read_newline.error()));
         } else if (*read_newline) {
             break;
         }
 
-        auto header_name_result = parser.read_header_name();
+        auto header_name_result = co_await parser.read_header_name();
         if (!header_name_result) {
-            return tl::unexpected(parse_error_to_receive_error(header_name_result.error()));
+            co_return tl::unexpected(parse_error_to_receive_error(header_name_result.error()));
         }
         std::string header_name(*header_name_result);
 
-        if (auto error = parser.eat_whitespace()) {
-            return tl::unexpected(parse_error_to_receive_error(error));
+        if (auto error = co_await parser.eat_whitespace()) {
+            co_return tl::unexpected(parse_error_to_receive_error(error));
         }
 
-        auto field = parser.read_header_field();
+        auto field = co_await parser.read_header_field();
         if (!field) {
-            return tl::unexpected(parse_error_to_receive_error(field.error()));
+            co_return tl::unexpected(parse_error_to_receive_error(field.error()));
         }
         request.headers[std::move(header_name)] = *field;
     }
 
-    return request;
+    co_return request;
 }

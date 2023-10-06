@@ -10,8 +10,6 @@
 #include <tl/expected.hpp>
 #include <fmt/chrono.h>
 
-struct Connection;
-
 extern const std::string_view UNKNOWN_STATUS;
 
 struct HttpResponseHeader {
@@ -30,7 +28,7 @@ struct HttpResponseHeader {
     void set_content_length(size_t length);
     void set_last_modified(const std::filesystem::file_time_type& time) {
         using namespace std::chrono;
-#if __cplusplus == 202002L
+#if __cplusplus >= 202002L
         const auto system_time = clock_cast<system_clock>(time);
 #else
         const auto system_time = time_point_cast<system_clock::duration>(time - std::filesystem::file_time_type::clock::now() + system_clock::now());
@@ -78,5 +76,5 @@ struct HttpRequest {
         BAD_REQUEST,
         PAYLOAD_TOO_LARGE,
     };
-    static tl::expected<HttpRequest, ReceiveError> receive(Connection&);
+    static awaitable<tl::expected<HttpRequest, ReceiveError>> receive(asio::ip::tcp::socket& connection);
 };

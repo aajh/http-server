@@ -1,5 +1,11 @@
+Async error handling
+Detect closed connection
+Logging
+
 FileCache:
+    Use asio
     Listen for file updates
+    Stream large files
 
 HttpRequest:
     Give errors for an invalid request-target
@@ -7,7 +13,3 @@ HttpRequest:
     (Parse URI completely)
     (Read the body, if there's one)
     (Case-insensitive handling of headers)
-
-General future things:
-    Asynchronous IO
-    Streaming IO

@@ -2,6 +2,13 @@
 
 #include <cassert>
 #include <cstdint>
+#include <asio.hpp>
+
+using asio::awaitable;
+using asio::co_spawn;
+using asio::detached;
+using asio::use_awaitable;
+namespace this_coro = asio::this_coro;
 
 using i8  = int8_t;
 using i16 = int16_t;

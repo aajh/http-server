@@ -257,7 +257,7 @@ struct HttpRequestParser {
     }
 
     [[nodiscard]] tl::expected<bool, Error> maybe_read_newline() {
-        if (auto error = ensure_data(2)) return error;
+        if (auto error = ensure_data(2)) return tl::unexpected(error);
 
         if (b[p] == '\r' && b[p + 1] == '\n') {
             p += 2;

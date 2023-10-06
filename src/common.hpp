@@ -10,6 +10,8 @@ using asio::detached;
 using asio::use_awaitable;
 namespace this_coro = asio::this_coro;
 
+#define RE(ec) asio::redirect_error(asio::use_awaitable, ec)
+
 using i8  = int8_t;
 using i16 = int16_t;
 using i32 = int32_t;

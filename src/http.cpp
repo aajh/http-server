@@ -182,15 +182,15 @@ struct HttpRequestParser {
 
         size_t total_received_bytes = 0;
         while (total_received_bytes < length) {
-            try {
-                auto received_bytes = co_await connection.async_receive(asio::buffer(&b[end], RECEIVE_CHUNK_SIZE), use_awaitable);
-                if (received_bytes == 0) {
-                    co_return BAD_REQUEST;
-                }
-                total_received_bytes += received_bytes;
-            } catch (std::exception&) {
-                co_return SERVER_ERROR;
+            asio::error_code ec;
+            auto received_bytes = co_await connection.async_receive(asio::buffer(&b[end], RECEIVE_CHUNK_SIZE), RE(ec));
+            if (ec) {
+                co_return ec == asio::error::eof || ec == asio::error::connection_reset ? BAD_REQUEST : SERVER_ERROR;
             }
+            if (received_bytes == 0) {
+                co_return BAD_REQUEST;
+            }
+            total_received_bytes += received_bytes;
         }
 
         if (token_start >= 0 && (end - (size_t)token_start) > 0) {

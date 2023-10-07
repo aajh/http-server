@@ -23,7 +23,7 @@ const char DEFAULT_HTML_DOCUMENT[] =
 ;
 
 awaitable<void> handle_connection(asio::ip::tcp::socket socket, FileCache& file_cache) {
-    asio::error_code ec;
+    boost::system::error_code ec;
     auto executor = co_await this_coro::executor;
 
     auto request = co_await HttpRequest::receive(socket);
@@ -141,7 +141,7 @@ awaitable<void> handle_connection(asio::ip::tcp::socket socket, FileCache& file_
 }
 
 awaitable<void> listener(u16 port) {
-    asio::error_code ec;
+    boost::system::error_code ec;
     auto executor = co_await this_coro::executor;
 
     FileCache file_cache;
@@ -186,7 +186,7 @@ awaitable<void> listener(u16 port) {
 }
 
 int main(int argc, char** argv) {
-    asio::error_code ec;
+    boost::system::error_code ec;
     auto port = argc > 1 ? strtoul(argv[1], nullptr, 10) : std::numeric_limits<u32>::max();
     if (port > std::numeric_limits<u16>::max()) {
         port = DEFAULT_PORT;

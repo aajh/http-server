@@ -2,8 +2,9 @@
 
 #include <cassert>
 #include <cstdint>
-#include <asio.hpp>
+#include <boost/asio.hpp>
 
+namespace asio = boost::asio;
 using asio::awaitable;
 using asio::co_spawn;
 using asio::detached;

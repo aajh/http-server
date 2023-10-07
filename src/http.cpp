@@ -182,7 +182,7 @@ struct HttpRequestParser {
 
         size_t total_received_bytes = 0;
         while (total_received_bytes < length) {
-            asio::error_code ec;
+            boost::system::error_code ec;
             auto received_bytes = co_await connection.async_receive(asio::buffer(&b[end], RECEIVE_CHUNK_SIZE), RE(ec));
             if (ec) {
                 co_return ec == asio::error::eof || ec == asio::error::connection_reset ? BAD_REQUEST : SERVER_ERROR;

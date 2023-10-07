@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <stdio.h>
-#include <string.h>
+#include <cstring>
+#include <cstdio>
 
 static const std::filesystem::path FILE_SERVE_ROOT = (std::filesystem::current_path() / FILE_FOLDER).lexically_normal();
 

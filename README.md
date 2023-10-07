@@ -1,7 +1,8 @@
 # http-server
-A simple HTTP 1.1 server written with C++ using POSIX APIs. The server doesn't use asynchronous IO or stream large files, so it will be quite slow when serving multiple clients at the same time.
+A simple HTTP 1.1 server written with C++ using Boost Asio with coroutines.
 
 Features:
+- Asynchronous IO with Boost Asio (File IO is blocking, since Asio doesn't support it with coroutines)
 - Serves files from the `public` folder
 - In addition, serves a static index HTML page
 - For parsing the requests a ring buffer is used. It uses virtual memory to map the buffer multiple times to memory, which makes it easier to use
@@ -11,13 +12,13 @@ Tested on macOS 12.6.3 with Apple Clang 13.1.6 and Ubuntu 22.04.3 with GNU C++ C
 
 
 ## Compiling
-First install fmt library version 10.1.1 and other needed packages. This can be done with the one of the following ways depending on the system:
+First install fmt library version 10.1.1, boost 1.74.0 and other needed packages. This can be done with the one of the following ways depending on the system:
 ```
 # macOS with Homebrew
-brew install fmt@10.1.1
+brew install fmt@10.1.1 boost@1.74.0
 
 # Ubuntu
-sudo apt install build-essential cmake pkg-config
+sudo apt install build-essential cmake pkg-config libboost1.74-dev
 cd ~
 wget https://github.com/fmtlib/fmt/releases/download/10.1.1/fmt-10.1.1.zip
 unzip fmt-10.1.1.zip

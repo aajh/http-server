@@ -378,6 +378,7 @@ static HttpRequest::ReceiveError parse_error_to_receive_error(HttpRequestParser:
         case P::BAD_REQUEST:
             return R::BAD_REQUEST;
     }
+    return R::SERVER_ERROR;
 }
 awaitable<tl::expected<HttpRequest, HttpRequest::ReceiveError>> HttpRequest::receive(asio::ip::tcp::socket& connection) {
     HttpRequest request;

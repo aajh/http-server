@@ -175,7 +175,7 @@ awaitable<void> listener(u16 port) {
 
         auto remote_endpoint = socket.remote_endpoint(ec);
         if (!ec) {
-            fmt::print("\nNew connection from address: {}:{}\n", remote_endpoint.address().to_string(), remote_endpoint.port());
+            fmt::print("New connection from address: {}:{}\n", remote_endpoint.address().to_string(), remote_endpoint.port());
         }
 
         co_spawn(executor, handle_connection(std::move(socket), file_cache), asio::redirect_error(detached, ec));

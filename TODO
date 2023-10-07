@@ -1,10 +1,12 @@
 Logging
 Use read_until
+Incremental builds
+Tests
 
 FileCache:
-    Use asio
-    Listen for file updates
+    Use another thread to read files
     Stream large files
+    (Listen for file updates)
 
 HttpRequest:
     Give errors for an invalid request-target

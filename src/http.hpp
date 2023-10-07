@@ -28,11 +28,7 @@ struct HttpResponseHeader {
     void set_content_length(size_t length);
     void set_last_modified(const std::filesystem::file_time_type& time) {
         using namespace std::chrono;
-#if __cplusplus >= 202002L
-        const auto system_time = clock_cast<system_clock>(time);
-#else
         const auto system_time = time_point_cast<system_clock::duration>(time - std::filesystem::file_time_type::clock::now() + system_clock::now());
-#endif
         set_last_modified(system_time);
     }
     template<class T> void set_last_modified(const T& time) {

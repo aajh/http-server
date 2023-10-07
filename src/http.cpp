@@ -180,23 +180,19 @@ struct HttpRequestParser {
             co_return PAYLOAD_TOO_LARGE;
         }
 
-        size_t total_received_bytes = 0;
-        while (total_received_bytes < length) {
-            boost::system::error_code ec;
-            auto received_bytes = co_await connection.async_receive(asio::buffer(&b[end], RECEIVE_CHUNK_SIZE), RE(ec));
-            if (ec) {
-                co_return ec == asio::error::eof || ec == asio::error::connection_reset ? BAD_REQUEST : SERVER_ERROR;
-            }
-            if (received_bytes == 0) {
-                co_return BAD_REQUEST;
-            }
-            total_received_bytes += received_bytes;
+        boost::system::error_code ec;
+        auto received_bytes = co_await async_read(connection, asio::buffer(&b[end], RECEIVE_CHUNK_SIZE), asio::transfer_at_least(length), RE(ec));
+        if (ec) {
+            co_return ec == asio::error::eof || ec == asio::error::connection_reset ? BAD_REQUEST : SERVER_ERROR;
+        }
+        if (received_bytes < length) {
+            co_return BAD_REQUEST;
         }
 
         if (token_start >= 0 && (end - (size_t)token_start) > 0) {
             auto n_start = b.normalized_index((size_t)token_start);
             auto n_end = b.normalized_index(end);
-            auto n_new_end = b.normalized_index(end + total_received_bytes);
+            auto n_new_end = b.normalized_index(end + received_bytes);
             bool end_wrapped = n_new_end <= n_end;
 
             bool overwritten;
@@ -210,7 +206,7 @@ struct HttpRequestParser {
             if (overwritten) co_return PAYLOAD_TOO_LARGE;
         }
 
-        end += total_received_bytes;
+        end += received_bytes;
         if (token_start == -1) {
             normalize();
         }
@@ -380,6 +376,7 @@ static HttpRequest::ReceiveError parse_error_to_receive_error(HttpRequestParser:
     }
     return R::SERVER_ERROR;
 }
+
 awaitable<tl::expected<HttpRequest, HttpRequest::ReceiveError>> HttpRequest::receive(asio::ip::tcp::socket& connection) {
     HttpRequest request;
     auto parser_creation = HttpRequestParser::create(connection);

@@ -11,7 +11,6 @@
 #include <functional>
 #include <tl/expected.hpp>
 
-const char FILE_FOLDER[] = "public";
 const char DEFAULT_MIME_TYPE[] = "application/octet-stream";
 
 struct File {
@@ -32,7 +31,6 @@ struct FileReadError {
     const char* message = nullptr;
 };
 
-tl::expected<std::filesystem::path, FileReadError> get_filesystem_path_from_uri_path(const std::string& uri_path);
 tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path& path);
 
 struct ReferenceWrappedPathHash {
@@ -58,11 +56,15 @@ struct FileCache {
     static constexpr size_t MAX_CACHE_ENTRIES = 1024;
     static constexpr auto MAX_ENTRY_LIFETIME = std::chrono::minutes(5);
 
+    FileCache(const char* folder = "");
+
+    std::filesystem::path file_root_path;
     List file_list;
     std::unordered_map<std::reference_wrapper<const std::filesystem::path>, List::iterator, ReferenceWrappedPathHash> file_map;
     size_t cache_size = 0;
 
     tl::expected<std::reference_wrapper<const File>, FileReadError> get_or_read(const std::string& uri_path);
+    tl::expected<std::filesystem::path, FileReadError> get_filesystem_path_from_uri_path(const std::string& uri_path) const;
     tl::expected<std::reference_wrapper<const File>, FileReadError> latest_file() const;
     void trim();
 };

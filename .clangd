@@ -1,2 +1,2 @@
 CompileFlags: 
-    Add: [-std=c++17, -fcoroutines-ts, -Wall, -Wextra, -Wpedantic, -Wno-deprecated-coroutine, -I./lib/include, -I../lib/include, -I/usr/local/include, -ferror-limit=0]
+    CompilationDatabase: "build"

@@ -7,6 +7,7 @@
 #include "file.hpp"
 
 const u16 DEFAULT_PORT = 3000;
+const char DEFAULT_FILE_FOLDER[] = "public";
 
 const char DEFAULT_HTML_DOCUMENT[] =
 "<!DOCTYPE html>"
@@ -140,28 +141,29 @@ awaitable<void> handle_connection(asio::ip::tcp::socket socket, FileCache& file_
     }
 }
 
-awaitable<void> listener(u16 port) {
+awaitable<void> listener(u16 port, const char* file_folder) {
     boost::system::error_code ec;
     auto executor = co_await this_coro::executor;
 
-    FileCache file_cache;
+    FileCache file_cache(file_folder);
+    fmt::print("Serving files from {}\n", file_cache.file_root_path.string());
 
     asio::ip::tcp::endpoint endpoint(asio::ip::tcp::v4(), port);
     asio::ip::tcp::acceptor acceptor(executor);
 
     acceptor.open(endpoint.protocol(), ec);
     if (ec) {
-        fmt::print(stderr, "open: {}\n", ec.message());
+        fmt::print(stderr, "open on port {}: {}\n", port, ec.message());
         co_return;
     }
     acceptor.bind(endpoint, ec);
     if (ec) {
-        fmt::print(stderr, "bind: {}\n", ec.message());
+        fmt::print(stderr, "bind on port {}: {}\n", port, ec.message());
         co_return;
     }
     acceptor.listen(asio::socket_base::max_listen_connections, ec);
     if (ec) {
-        fmt::print(stderr, "listen: {}\n", ec.message());
+        fmt::print(stderr, "listen on port {}: {}\n", port, ec.message());
         co_return;
     }
     fmt::print("Listening on port {}...\n", port);
@@ -187,13 +189,17 @@ awaitable<void> listener(u16 port) {
 
 int main(int argc, char** argv) {
     boost::system::error_code ec;
-    auto port = argc > 1 ? strtoul(argv[1], nullptr, 10) : std::numeric_limits<u32>::max();
+
+    const auto port_env = std::getenv("PORT");
+    auto port = port_env ? strtoul(port_env, nullptr, 10) : std::numeric_limits<u32>::max();
     if (port > std::numeric_limits<u16>::max()) {
         port = DEFAULT_PORT;
     }
 
+    auto file_folder = argc > 1 ? argv[1] : DEFAULT_FILE_FOLDER;
+
     asio::io_context io_context(1);
-    co_spawn(io_context, listener(port), asio::redirect_error(detached, ec));
+    co_spawn(io_context, listener(port, file_folder), asio::redirect_error(detached, ec));
     if (ec) {
         fmt::print(stderr, "Error while starting the listener: {}\n", ec.message());
         return -1;

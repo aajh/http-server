@@ -5,28 +5,6 @@
 #include <cstring>
 #include <cstdio>
 
-static const std::filesystem::path FILE_SERVE_ROOT = (std::filesystem::current_path() / FILE_FOLDER).lexically_normal();
-
-tl::expected<std::filesystem::path, FileReadError> get_filesystem_path_from_uri_path(const std::string& uri_path) {
-    std::error_code ec;
-
-    if (uri_path.size() == 0 || uri_path[0] != '/') {
-        return tl::unexpected(FileReadError{ FileReadError::INVALID_URI, ec });
-    }
-
-    auto path = std::filesystem::weakly_canonical(FILE_SERVE_ROOT / uri_path.substr(1), ec);
-    if (ec) {
-        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec });
-    }
-
-    auto first_mismatch = std::mismatch(FILE_SERVE_ROOT.begin(), FILE_SERVE_ROOT.end(), path.begin()).first;
-    if (first_mismatch != FILE_SERVE_ROOT.end()) {
-        return tl::unexpected(FileReadError{ FileReadError::INVALID_URI, ec });
-    }
-
-    return path;
-}
-
 static const std::unordered_map<std::string_view, const char*> MIME_TYPES = {
     { "txt", "text/plain" },
     { "html", "text/html" },
@@ -97,6 +75,10 @@ tl::expected<File, FileReadError> read_file_contents(const std::filesystem::path
     return ret;
 }
 
+FileCache::FileCache(const char* folder) {
+    file_root_path = (std::filesystem::current_path() / folder).lexically_normal();
+}
+
 tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::get_or_read(const std::string& uri_path) {
     auto path = get_filesystem_path_from_uri_path(uri_path);
     if (!path) {
@@ -155,6 +137,33 @@ read_file:
 
     return latest_file();
 }
+
+tl::expected<std::filesystem::path, FileReadError> FileCache::get_filesystem_path_from_uri_path(const std::string& uri_path) const {
+    std::error_code ec;
+
+    if (uri_path.size() == 0 || uri_path[0] != '/') {
+        return tl::unexpected(FileReadError{ FileReadError::INVALID_URI, ec });
+    }
+
+    auto path = std::filesystem::weakly_canonical(file_root_path / uri_path.substr(1), ec);
+    if (ec) {
+        return tl::unexpected(FileReadError{ FileReadError::IO_ERROR, ec });
+    }
+
+    bool is_inside_root_path = true;
+    for (auto r = file_root_path.begin(), p = path.begin(); r != file_root_path.end() && *r != ""; ++r, ++p) {
+        if (p == path.end() || *p != *r) {
+            is_inside_root_path = false;
+            break;
+        }
+    }
+    if (!is_inside_root_path) {
+        return tl::unexpected(FileReadError{ FileReadError::INVALID_URI, ec });
+    }
+
+    return path;
+}
+
 
 tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::latest_file() const {
     assert(!file_list.empty());

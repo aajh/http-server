@@ -32,23 +32,24 @@ awaitable<void> handle_connection(asio::ip::tcp::socket socket, FileCache& file_
         fmt::print(stderr, "Error while receiving the request: ");
         u16 status;
         switch (request.error()) {
-            case HttpRequest::SERVER_ERROR:
+            using enum HttpRequest::ReceiveError;
+            case SERVER_ERROR:
                 fmt::print(stderr, "server error\n");
                 status = 500;
                 break;
-            case HttpRequest::UNKNOWN_METHOD:
+            case UNKNOWN_METHOD:
                 fmt::print(stderr, "unknown method\n");
                 status = 501;
                 break;
-            case HttpRequest::UNSUPPORTED_HTTP_VERSION:
+            case UNSUPPORTED_HTTP_VERSION:
                 fmt::print(stderr, "unsupported HTTP version\n");
                 status = 505;
                 break;
-            case HttpRequest::BAD_REQUEST:
+            case BAD_REQUEST:
                 fmt::print(stderr, "bad request\n");
                 status = 400;
                 break;
-            case HttpRequest::PAYLOAD_TOO_LARGE:
+            case PAYLOAD_TOO_LARGE:
                 fmt::print(stderr, "payload too large\n");
                 status = 413;
                 break;

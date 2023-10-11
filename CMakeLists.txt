@@ -18,7 +18,9 @@ endif()
 
 add_library(http_server_compiler_flags INTERFACE)
 target_compile_features(http_server_compiler_flags INTERFACE cxx_std_20)
-target_compile_options(http_server_compiler_flags INTERFACE "-Wall;-Wextra;-Wpedantic")
+# fmt library causes warnings with -fsanitze=vptr, so disable that check
+target_compile_options(http_server_compiler_flags INTERFACE "-Wall;-Wextra;-Wpedantic;-fsanitize=address,undefined;-fno-sanitize=vptr")
+target_link_options(http_server_compiler_flags INTERFACE "-fsanitize=address,undefined")
 
 add_executable(http-server)
 add_subdirectory(src)

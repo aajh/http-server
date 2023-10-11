@@ -21,7 +21,8 @@ static const std::unordered_map<std::string_view, const char*> MIME_TYPES = {
 };
 
 static std::string_view get_mime_type(const std::filesystem::path& path) {
-    std::string_view extension = path.extension().native();
+    const auto extension_path = path.extension();
+    std::string_view extension = extension_path.native();
     if (extension.size() == 0) return DEFAULT_MIME_TYPE;
     if (extension[0] == '.') extension = extension.substr(1);
 

@@ -157,6 +157,10 @@ awaitable<void> listener(u16 port, const char* file_folder) {
         fmt::print(stderr, "open on port {}: {}\n", port, ec.message());
         co_return;
     }
+
+    asio::socket_base::reuse_address reuse_address(true);
+    acceptor.set_option(reuse_address);
+
     acceptor.bind(endpoint, ec);
     if (ec) {
         fmt::print(stderr, "bind on port {}: {}\n", port, ec.message());

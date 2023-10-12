@@ -118,12 +118,12 @@ std::string HttpResponseHeader::build_error(u16 status) {
 }
 
 
-#define METHOD_STRING(method) { method, #method },
+#define METHOD_STRING(method) { HttpMethod::method, #method },
 static const std::unordered_map<HttpMethod, std::string_view> METHOD_STRING_MAP = {
     LIST_OF_HTTP_METHODS(METHOD_STRING)
 };
 
-#define STRING_METHOD(method) { #method, method },
+#define STRING_METHOD(method) { #method, HttpMethod::method },
 static const std::map<std::string_view, HttpMethod, std::less<>> STRING_METHOD_MAP = {
     LIST_OF_HTTP_METHODS(STRING_METHOD)
 };
@@ -362,8 +362,8 @@ struct HttpRequestParser {
 };
 
 static HttpRequest::ReceiveError parse_error_to_receive_error(HttpRequestParser::Error parse_error) {
-    using R = HttpRequest;
-    using P = HttpRequestParser;
+    using R = HttpRequest::ReceiveError;
+    using P = HttpRequestParser::Error;
     switch (parse_error) {
         case P::OK:
             return R::SERVER_ERROR;
@@ -378,6 +378,7 @@ static HttpRequest::ReceiveError parse_error_to_receive_error(HttpRequestParser:
 }
 
 awaitable<tl::expected<HttpRequest, HttpRequest::ReceiveError>> HttpRequest::receive(asio::ip::tcp::socket& connection) {
+    using enum ReceiveError;
     HttpRequest request;
     auto parser_creation = HttpRequestParser::create(connection);
     if (!parser_creation) {

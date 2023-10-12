@@ -2,8 +2,8 @@ Logging
 Tests
 
 FileCache:
-    Use another thread to read files
     Stream large files
+    (Use another thread to read files) (Needs coroutine compatible synchronization)
     (Listen for file updates)
 
 HttpRequest:

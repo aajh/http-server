@@ -169,7 +169,7 @@ tl::expected<std::filesystem::path, FileReadError> FileCache::get_filesystem_pat
 tl::expected<std::reference_wrapper<const File>, FileReadError> FileCache::latest_file() const {
     assert(!file_list.empty());
     auto& entry = file_list.front();
-    if (entry.status) {
+    if (entry.status != FileReadError::OK) {
         return tl::unexpected(FileReadError{ entry.status });
     } else {
         return entry.file;

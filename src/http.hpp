@@ -53,7 +53,7 @@ struct HttpResponseHeader {
     DO(PATCH)\
 
 #define METHOD_ENUM(method) method,
-enum HttpMethod {
+enum class HttpMethod {
     LIST_OF_HTTP_METHODS(METHOD_ENUM)
 };
 
@@ -65,7 +65,7 @@ struct HttpRequest {
     std::string path;
     std::unordered_map<std::string, std::string> headers;
 
-    enum ReceiveError {
+    enum class ReceiveError {
         SERVER_ERROR,
         UNKNOWN_METHOD,
         UNSUPPORTED_HTTP_VERSION,

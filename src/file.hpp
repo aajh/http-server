@@ -20,12 +20,13 @@ struct File {
 };
 
 struct FileReadError {
-    enum Type {
+    enum class Type {
         OK = 0,
         INVALID_URI,
         NOT_FOUND,
         IO_ERROR,
-    } type = OK;
+    } type = Type::OK;
+    using enum Type;
 
     std::error_code ec = {};
     const char* message = nullptr;

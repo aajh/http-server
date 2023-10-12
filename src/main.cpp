@@ -94,15 +94,16 @@ awaitable<void> handle_connection(asio::ip::tcp::socket socket, FileCache& file_
 
             u16 status = 500;
             switch (error.type) {
-                case FileReadError::OK:
+                using enum FileReadError::Type;
+                case OK:
                     break;
-                case FileReadError::INVALID_URI:
+                case INVALID_URI:
                     status = 400;
                     break;
-                case FileReadError::NOT_FOUND:
+                case NOT_FOUND:
                     status = 404;
                     break;
-                case FileReadError::IO_ERROR:
+                case IO_ERROR:
                     status = 500;
                     if (error.message) {
                         fmt::print(stderr, "IO error: {}\n", error.message);
